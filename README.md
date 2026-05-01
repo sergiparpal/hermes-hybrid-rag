@@ -1,4 +1,4 @@
-# hierarchical-rag
+# advanced-rag
 
 A Hermes Agent plugin for **advanced + hierarchical** retrieval-augmented
 generation over local user documents (`md` / `txt` / `pdf`).
