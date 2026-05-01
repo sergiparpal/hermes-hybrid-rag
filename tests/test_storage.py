@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from hierarchical_rag.storage import Store
+from advanced_rag.storage import Store
 
 
 def _stat(path: Path) -> os.stat_result:

@@ -2,8 +2,8 @@ from pathlib import Path
 
 import numpy as np
 
-from hierarchical_rag.indexing import index_path
-from hierarchical_rag.storage import Store
+from advanced_rag.indexing import index_path
+from advanced_rag.storage import Store
 
 FIXTURES = Path(__file__).parent / "fixtures" / "docs"
 

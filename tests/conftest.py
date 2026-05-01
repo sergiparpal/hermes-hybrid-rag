@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-# Add project root so `import hierarchical_rag.tools` works during tests.
+# Add project root so `import advanced_rag.tools` works during tests.
 _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
@@ -194,7 +194,7 @@ def mock_cross_encoder(monkeypatch):
     # Drop the rerank module's cached CrossEncoder so each test gets a fresh
     # one bound to this fixture's scores.
     try:
-        import hierarchical_rag.rerank as _rr
+        import advanced_rag.rerank as _rr
         _rr._CROSS = None
     except ImportError:
         pass

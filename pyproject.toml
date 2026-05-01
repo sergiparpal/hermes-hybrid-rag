@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "hierarchical-rag"
+name = "advanced-rag"
 version = "0.1.0"
 description = "Advanced + Hierarchical RAG over local documents (md/txt/pdf) — Hermes Agent plugin."
 readme = "README.md"
@@ -24,13 +24,13 @@ rerank = ["cohere>=5.0"]
 dev = ["pytest>=8.0"]
 
 [project.entry-points."hermes_agent.plugins"]
-hierarchical-rag = "hierarchical_rag"
+advanced-rag = "advanced_rag"
 
 [tool.setuptools.packages.find]
-include = ["hierarchical_rag*"]
+include = ["advanced_rag*"]
 
 [tool.setuptools.package-data]
-hierarchical_rag = ["plugin.yaml", "requirements.txt", "skills/**/*"]
+advanced_rag = ["plugin.yaml", "requirements.txt", "skills/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

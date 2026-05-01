@@ -1,7 +1,7 @@
 import json
 
-import hierarchical_rag.state as state
-from hierarchical_rag.config import toggles_path
+import advanced_rag.state as state
+from advanced_rag.config import toggles_path
 
 
 def setup_function(_):

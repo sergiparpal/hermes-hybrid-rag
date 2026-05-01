@@ -3,12 +3,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-import hierarchical_rag.hooks as hooks_mod
-import hierarchical_rag.state as state_mod
-from hierarchical_rag.engine import RAGEngine, set_engine_for_tests
-from hierarchical_rag.hooks import ambient_pre_llm_call
-from hierarchical_rag.indexing import index_path
-from hierarchical_rag.storage import Store
+import advanced_rag.hooks as hooks_mod
+import advanced_rag.state as state_mod
+from advanced_rag.engine import RAGEngine, set_engine_for_tests
+from advanced_rag.hooks import ambient_pre_llm_call
+from advanced_rag.indexing import index_path
+from advanced_rag.storage import Store
 
 FIXTURES = Path(__file__).parent / "fixtures" / "docs"
 

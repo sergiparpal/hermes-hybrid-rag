@@ -149,7 +149,7 @@ def index_path(path, force: bool = False, store: Store | None = None,
             _, pn, cn = _index_file(own_store, p)
         except Exception as e:
             # Skip the file but keep going. Surface the error in the summary.
-            print(f"[hierarchical-rag] failed to index {p}: {e}")
+            print(f"[advanced-rag] failed to index {p}: {e}")
             continue
         new_files += 1
         new_parents += pn

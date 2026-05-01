@@ -1,7 +1,7 @@
 import json
 
-import hierarchical_rag.state as state_mod
-from hierarchical_rag.slash import slash_rag
+import advanced_rag.state as state_mod
+from advanced_rag.slash import slash_rag
 
 
 def setup_function(_):

@@ -1,14 +1,14 @@
 """Configuration constants and data-dir resolution.
 
 The single rule: explicit `Store(data_dir=...)` arg > `HERMES_RAG_DATA_DIR`
-env var > default `~/.hermes/plugins/hierarchical-rag/data/`.
+env var > default `~/.hermes/plugins/advanced-rag/data/`.
 """
 from __future__ import annotations
 
 import os
 from pathlib import Path
 
-DEFAULT_DATA_DIR = Path.home() / ".hermes" / "plugins" / "hierarchical-rag" / "data"
+DEFAULT_DATA_DIR = Path.home() / ".hermes" / "plugins" / "advanced-rag" / "data"
 
 
 def get_data_dir() -> Path:

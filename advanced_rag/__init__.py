@@ -1,4 +1,4 @@
-"""hierarchical-rag — Hermes Agent plugin entry point.
+"""advanced-rag — Hermes Agent plugin entry point.
 
 Public surface is `register(ctx)`. All adapter shapes are isolated in
 `adapters.py`; if Hermes' API drifts, the fix lives here + `adapters.py` only.

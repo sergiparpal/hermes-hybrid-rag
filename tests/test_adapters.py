@@ -3,12 +3,12 @@ from pathlib import Path
 import pytest
 import yaml
 
-import hierarchical_rag
-from hierarchical_rag import adapters
+import advanced_rag
+from advanced_rag import adapters
 
 
 def test_register_wires_three_tools(fake_ctx):
-    hierarchical_rag.register(fake_ctx)
+    advanced_rag.register(fake_ctx)
     names = [t["name"] for t in fake_ctx.tools]
     assert sorted(names) == ["rag_drill_down", "rag_list_sources", "rag_search"]
     for t in fake_ctx.tools:
@@ -18,7 +18,7 @@ def test_register_wires_three_tools(fake_ctx):
 
 
 def test_register_wires_pre_llm_call_hook(fake_ctx):
-    hierarchical_rag.register(fake_ctx)
+    advanced_rag.register(fake_ctx)
     events = [h["event"] for h in fake_ctx.hooks]
     assert "pre_llm_call" in events
     fn = next(h["fn"] for h in fake_ctx.hooks if h["event"] == "pre_llm_call")
@@ -26,7 +26,7 @@ def test_register_wires_pre_llm_call_hook(fake_ctx):
 
 
 def test_register_wires_on_session_start_hook(fake_ctx):
-    hierarchical_rag.register(fake_ctx)
+    advanced_rag.register(fake_ctx)
     events = [h["event"] for h in fake_ctx.hooks]
     assert "on_session_start" in events
     # exactly two hooks: pre_llm_call and on_session_start
@@ -34,7 +34,7 @@ def test_register_wires_on_session_start_hook(fake_ctx):
 
 
 def test_register_wires_cli_command(fake_ctx):
-    hierarchical_rag.register(fake_ctx)
+    advanced_rag.register(fake_ctx)
     assert len(fake_ctx.cli_commands) == 1
     cmd = fake_ctx.cli_commands[0]
     assert cmd["name"] == "rag"
@@ -43,7 +43,7 @@ def test_register_wires_cli_command(fake_ctx):
 
 
 def test_register_wires_slash_command(fake_ctx):
-    hierarchical_rag.register(fake_ctx)
+    advanced_rag.register(fake_ctx)
     assert len(fake_ctx.commands) == 1
     cmd = fake_ctx.commands[0]
     assert cmd["name"] == "rag"
@@ -51,7 +51,7 @@ def test_register_wires_slash_command(fake_ctx):
 
 
 def test_register_wires_skill_with_path_object(fake_ctx):
-    hierarchical_rag.register(fake_ctx)
+    advanced_rag.register(fake_ctx)
     assert len(fake_ctx.skills) == 1
     s = fake_ctx.skills[0]
     assert s["name"] == "rag-usage"
@@ -114,7 +114,7 @@ def test_session_warm_hook_spawns_background_thread(tmp_data_dir, monkeypatch):
     """make_session_warm_hook should return a callable that spawns a thread
     invoking get_engine()._ensure_loaded — and never blocks or raises."""
     import threading
-    from hierarchical_rag import engine as engine_mod
+    from advanced_rag import engine as engine_mod
 
     calls = {"ensure": 0}
 
@@ -140,7 +140,7 @@ def test_session_warm_hook_swallows_exceptions(monkeypatch):
     """Engine warming must never raise out — failures fall back to cold-load
     on the first ambient call."""
     import threading
-    from hierarchical_rag import engine as engine_mod
+    from advanced_rag import engine as engine_mod
 
     def _boom():
         raise RuntimeError("simulated MiniLM load failure")
@@ -161,9 +161,9 @@ def test_session_warm_hook_swallows_exceptions(monkeypatch):
 
 
 def test_plugin_yaml_parses_and_has_expected_keys():
-    p = Path(__file__).parent.parent / "hierarchical_rag" / "plugin.yaml"
+    p = Path(__file__).parent.parent / "advanced_rag" / "plugin.yaml"
     data = yaml.safe_load(p.read_text())
-    assert data["name"] == "hierarchical-rag"
+    assert data["name"] == "advanced-rag"
     assert "version" in data
     tools = data.get("provides_tools", [])
     assert sorted(tools) == ["rag_drill_down", "rag_list_sources", "rag_search"]
@@ -174,7 +174,7 @@ def test_plugin_yaml_parses_and_has_expected_keys():
 def test_plugin_yaml_requires_env_is_string_list():
     """Hermes parser at hermes_cli/plugins.py:892 accepts both strings and
     dicts, but no codebase consumer reads dict fields. Convention is strings."""
-    p = Path(__file__).parent.parent / "hierarchical_rag" / "plugin.yaml"
+    p = Path(__file__).parent.parent / "advanced_rag" / "plugin.yaml"
     data = yaml.safe_load(p.read_text())
     env = data.get("requires_env", [])
     assert env, "requires_env should not be empty"
@@ -184,7 +184,7 @@ def test_plugin_yaml_requires_env_is_string_list():
 
 
 def test_skill_md_has_frontmatter():
-    p = Path(__file__).parent.parent / "hierarchical_rag" / "skills" / "rag-usage" / "SKILL.md"
+    p = Path(__file__).parent.parent / "advanced_rag" / "skills" / "rag-usage" / "SKILL.md"
     text = p.read_text()
     assert text.startswith("---\n")
     end = text.find("\n---", 4)

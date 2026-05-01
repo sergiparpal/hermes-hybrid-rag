@@ -2,9 +2,9 @@ import sys
 
 import pytest
 
-import hierarchical_rag.rerank as rerank_mod
-from hierarchical_rag.rerank import rerank
-from hierarchical_rag.retrieval import ParentResult
+import advanced_rag.rerank as rerank_mod
+from advanced_rag.rerank import rerank
+from advanced_rag.retrieval import ParentResult
 
 
 def _parents():

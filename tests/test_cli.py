@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from hierarchical_rag import cli, indexing
-from hierarchical_rag.storage import Store
+from advanced_rag import cli, indexing
+from advanced_rag.storage import Store
 
 FIXTURES = Path(__file__).parent / "fixtures" / "docs"
 

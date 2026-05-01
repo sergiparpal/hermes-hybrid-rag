@@ -79,7 +79,7 @@ The dev install **does not** pull `sentence-transformers`, `pypdf`,
 ### Runtime machine (full deps, inside Hermes' Python env)
 
 ```bash
-cd ~/.hermes/plugins/hierarchical-rag && python -m pip install -r requirements.txt
+cd ~/.hermes/plugins/advanced-rag && python -m pip install -r requirements.txt
 ```
 
 The first explicit `rag_search` triggers MiniLM (~80 MB) and (if no Cohere
@@ -94,10 +94,10 @@ Three supported flows.
 ```bash
 rsync -av --delete \
   --exclude='__pycache__' --exclude='*.pyc' \
-  /home/sergi/Documentos/advanced-rag/hierarchical_rag/ \
-  user@runtime:~/.hermes/plugins/hierarchical-rag/
+  /home/sergi/Documentos/advanced-rag/advanced_rag/ \
+  user@runtime:~/.hermes/plugins/advanced-rag/
 
-ssh user@runtime 'cd ~/.hermes/plugins/hierarchical-rag && python -m pip install -r requirements.txt'
+ssh user@runtime 'cd ~/.hermes/plugins/advanced-rag && python -m pip install -r requirements.txt'
 ```
 
 The trailing slash on the source flattens contents (`plugin.yaml`, `*.py`,
@@ -107,9 +107,9 @@ expects.
 ### 2. git clone + symlink
 
 ```bash
-git clone <repo-url> ~/.hermes/plugins/hierarchical-rag-source
-ln -s ~/.hermes/plugins/hierarchical-rag-source/hierarchical_rag ~/.hermes/plugins/hierarchical-rag
-cd ~/.hermes/plugins/hierarchical-rag && python -m pip install -r requirements.txt
+git clone <repo-url> ~/.hermes/plugins/advanced-rag-source
+ln -s ~/.hermes/plugins/advanced-rag-source/advanced_rag ~/.hermes/plugins/advanced-rag
+cd ~/.hermes/plugins/advanced-rag && python -m pip install -r requirements.txt
 ```
 
 ### 3. pip entry-point install
@@ -118,7 +118,7 @@ cd ~/.hermes/plugins/hierarchical-rag && python -m pip install -r requirements.t
 
 ```toml
 [project.entry-points."hermes_agent.plugins"]
-hierarchical-rag = "hierarchical_rag"
+advanced-rag = "advanced_rag"
 ```
 
 ```bash
@@ -134,7 +134,7 @@ degrades when unset.
 |---|---|
 | `COHERE_API_KEY` | Optional. Enables Cohere reranker (`rerank-english-v3.0`). Without it, falls back to a local cross-encoder (~80 MB download on first use). Get one at https://dashboard.cohere.com/api-keys. |
 | `ANTHROPIC_API_KEY` | Optional. Enables LLM-based query expansion (paraphrases + HyDE) via `claude-haiku-4-5`. Without it, expansion is skipped and the original query is used. Get one at https://console.anthropic.com/. |
-| `HERMES_RAG_DATA_DIR` | Optional. Override the data directory (defaults to `~/.hermes/plugins/hierarchical-rag/data`). Useful for tests and isolated runs. |
+| `HERMES_RAG_DATA_DIR` | Optional. Override the data directory (defaults to `~/.hermes/plugins/advanced-rag/data`). Useful for tests and isolated runs. |
 
 The data directory is created lazily by `Store(get_data_dir())` on first
 index/use. It is **not** tracked in git and is safe to delete (`hermes rag
@@ -192,7 +192,7 @@ doesn't abort the whole run.
 ## Repository layout
 
 See `BUILD.md` §4 for the full layout. The Hermes-coupled surface is just
-`hierarchical_rag/__init__.py::register` and `hierarchical_rag/adapters.py`.
+`advanced_rag/__init__.py::register` and `advanced_rag/adapters.py`.
 Every other module is pure and unit-tested.
 
 ## Hermes API verification

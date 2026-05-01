@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from hierarchical_rag import parents
-from hierarchical_rag.parents import (
+from advanced_rag import parents
+from advanced_rag.parents import (
     Parent,
     _enforce_parent_cap,
     extract_md,

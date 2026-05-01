@@ -1,4 +1,4 @@
-name: hierarchical-rag
+name: advanced-rag
 version: 0.1.0
 description: >-
   Advanced + Hierarchical RAG over local documents (md/txt/pdf) — hybrid

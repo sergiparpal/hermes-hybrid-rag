@@ -1,4 +1,4 @@
-from hierarchical_rag.chunking import recursive_split
+from advanced_rag.chunking import recursive_split
 
 
 def test_empty_input_returns_empty_list():

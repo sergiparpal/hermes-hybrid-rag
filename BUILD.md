@@ -1,6 +1,6 @@
-# BUILD.md — Hermes `hierarchical-rag` Plugin
+# BUILD.md — Hermes `advanced-rag` Plugin
 
-This document is the single source of truth for building the `hierarchical-rag` Hermes Agent plugin. It supersedes and replaces the earlier `Hermes hierarchical-rag Plugin — Implementation Plan.md` and `Hermes hierarchical-rag Plugin — Refined Implementation Plan.md` — those two files can be deleted once this document is in place.
+This document is the single source of truth for building the `advanced-rag` Hermes Agent plugin. It supersedes and replaces the earlier `Hermes advanced-rag Plugin — Implementation Plan.md` and `Hermes advanced-rag Plugin — Refined Implementation Plan.md` — those two files can be deleted once this document is in place.
 
 Read it top to bottom, follow the phases in order, and use the `pytest -q` gates as the signal to advance. Do not skip Phase 0.
 
@@ -23,7 +23,7 @@ The retrieval target is **always a parent**, never a chunk. Chunks are the searc
 
 ## 2. Constraints
 
-1. **Dev machine ≠ runtime machine.** Canonical project root is `/home/sergi/Documentos/advanced-rag/`. Hermes runs elsewhere; `~/.hermes/plugins/hierarchical-rag/` does not exist on the dev machine and must not be created here.
+1. **Dev machine ≠ runtime machine.** Canonical project root is `/home/sergi/Documentos/advanced-rag/`. Hermes runs elsewhere; `~/.hermes/plugins/advanced-rag/` does not exist on the dev machine and must not be created here.
 2. **Runtime state never appears in the repo.** `data/` (SQLite, `.npz`, BM25 pickle) is created lazily on first index/use on the runtime machine. Gitignored. Never written to during dev.
 3. **Data dir is overridable** via `HERMES_RAG_DATA_DIR`. Tests always pass `tmp_path` through this env var or the `data_dir=` constructor argument — never touch the default location.
 4. **Pure functions are unit-tested directly.** Hermes adapter layer is small enough to inspect by eye and is verified manually post-deploy.
@@ -79,7 +79,7 @@ The second-level RRF fuses **chunk** rankings (not parent rankings) so the fusio
 ├── README.md                        # install, usage, architecture, deployment (Phase 8)
 ├── pyproject.toml                   # entry-point install option
 ├── requirements.txt                 # runtime + dev deps, optional deps marked
-├── hierarchical_rag/                # deployable plugin payload (what gets rsync'd)
+├── advanced_rag/                # deployable plugin payload (what gets rsync'd)
 │   ├── plugin.yaml                  # Hermes manifest
 │   ├── requirements.txt             # COPY of repo-root file (so a single rsync carries deps)
 │   ├── __init__.py                  # register(ctx) — Hermes adapter only
@@ -132,7 +132,7 @@ The second-level RRF fuses **chunk** rankings (not parent rankings) so the fusio
 
 1. Explicit `Store(data_dir=...)` constructor argument (highest priority).
 2. `HERMES_RAG_DATA_DIR` environment variable.
-3. Default: `~/.hermes/plugins/hierarchical-rag/data/`.
+3. Default: `~/.hermes/plugins/advanced-rag/data/`.
 
 Tests use the env var (set via the `tmp_data_dir` fixture) or pass `data_dir=tmp_path` explicitly. Production paths use the default. This rule is the only thing keeping tests from polluting the user's real index — keep it strict.
 
@@ -140,7 +140,7 @@ Tests use the env var (set via the `tmp_data_dir` fixture) or pass `data_dir=tmp
 
 `tests/conftest.py`:
 
-- Adds project root to `sys.path` so `import hierarchical_rag.tools` works.
+- Adds project root to `sys.path` so `import advanced_rag.tools` works.
 - `tmp_data_dir` fixture: sets `HERMES_RAG_DATA_DIR=tmp_path` and yields the path.
 - `stub_embedder` fixture: deterministic vectors (e.g., `np.array([hash(t) % N / N] * 384)`, then L2-normalized).
 - `fake_ctx` fixture: records `register_tool/hook/cli_command/command/skill` calls into a dict.
@@ -198,9 +198,9 @@ Create files:
 - `pyproject.toml` with the entry-point block:
   ```toml
   [project.entry-points."hermes_agent.plugins"]
-  hierarchical-rag = "hierarchical_rag"
+  advanced-rag = "advanced_rag"
   ```
-- `hierarchical_rag/__init__.py` — empty placeholder (real `register(ctx)` lands in Phase 7).
+- `advanced_rag/__init__.py` — empty placeholder (real `register(ctx)` lands in Phase 7).
 - `tests/conftest.py` with `sys.path` injection + `tmp_data_dir` fixture + empty stub fixtures.
 
 Install dev deps:
@@ -221,7 +221,7 @@ Files: `config.py`, `chunking.py`, `parents.py`, `storage.py`. Fixtures: `tests/
 from pathlib import Path
 import os
 
-DEFAULT_DATA_DIR = Path.home() / ".hermes" / "plugins" / "hierarchical-rag" / "data"
+DEFAULT_DATA_DIR = Path.home() / ".hermes" / "plugins" / "advanced-rag" / "data"
 
 def get_data_dir() -> Path:
     env = os.environ.get("HERMES_RAG_DATA_DIR")
@@ -777,7 +777,7 @@ Inject `state_mod` and `store_factory` for tests (Hermes wrapper omits these to 
 
 ## Phase 7 — Hermes adapter layer (after Phase 0 confirmed)
 
-Files: `adapters.py`, `hierarchical_rag/__init__.py`, `plugin.yaml`, `skills/rag-usage/SKILL.md`, `hierarchical_rag/requirements.txt` (copy of root file).
+Files: `adapters.py`, `advanced_rag/__init__.py`, `plugin.yaml`, `skills/rag-usage/SKILL.md`, `advanced_rag/requirements.txt` (copy of root file).
 
 This phase is the **only** Hermes-coupled work. If any inferred API turns out wrong post-deploy, the fix lives here.
 
@@ -836,7 +836,7 @@ def make_session_warm_hook():
     return _warm
 ```
 
-### `hierarchical_rag/__init__.py`
+### `advanced_rag/__init__.py`
 
 ```python
 import os
@@ -873,7 +873,7 @@ This file is the only Hermes-coupled module. If any inferred API differs from Ph
 ### `plugin.yaml`
 
 ```yaml
-name: hierarchical-rag
+name: advanced-rag
 version: 0.1.0
 description: Advanced + Hierarchical RAG over local documents (md/txt/pdf) — hybrid BM25+dense search with query expansion, reranking, and parent-unit retrieval.
 author: Sergi Parpal
@@ -893,7 +893,7 @@ requires_env:
     url: https://console.anthropic.com/
     secret: true
   - name: HERMES_RAG_DATA_DIR
-    description: Optional. Override the data directory (defaults to ~/.hermes/plugins/hierarchical-rag/data). Useful for tests and isolated runs.
+    description: Optional. Override the data directory (defaults to ~/.hermes/plugins/advanced-rag/data). Useful for tests and isolated runs.
     secret: false
 ```
 
@@ -917,9 +917,9 @@ Body teaches:
 - Cite as `(<basename>, <title-or-page>)`.
 - Stop after two empty searches; tell the user the corpus likely doesn't cover the topic.
 
-### `hierarchical_rag/requirements.txt`
+### `advanced_rag/requirements.txt`
 
-Copy of repo-root `requirements.txt` (so `rsync -av hierarchical_rag/ ...` carries deps in one shot).
+Copy of repo-root `requirements.txt` (so `rsync -av advanced_rag/ ...` carries deps in one shot).
 
 ### `tests/test_adapters.py`
 
@@ -929,8 +929,8 @@ Copy of repo-root `requirements.txt` (so `rsync -av hierarchical_rag/ ...` carri
 
 ```bash
 pytest -q                                              # full suite green
-python -c "from hierarchical_rag import register"      # exits 0
-python -c "import yaml; yaml.safe_load(open('hierarchical_rag/plugin.yaml'))"  # validates manifest
+python -c "from advanced_rag import register"      # exits 0
+python -c "import yaml; yaml.safe_load(open('advanced_rag/plugin.yaml'))"  # validates manifest
 ```
 
 ## Phase 8 — README + final pass
@@ -949,28 +949,28 @@ Manual eye-pass of `__init__.py` and `adapters.py` against `HERMES_API.md`.
 
 ## 7. Critical files (touch points if anything goes wrong)
 
-- `hierarchical_rag/__init__.py` — only Hermes-coupled module. **First place to edit if API drifts.**
-- `hierarchical_rag/adapters.py` — closures isolate inferred shapes. Second touch point.
-- `hierarchical_rag/engine.py` — singleton lifecycle; lazy load + `reset()` correctness gates ambient hook latency.
-- `hierarchical_rag/storage.py` — atomic `.npz`/`.pkl` writes; `embed_row` invariant (chunk row ↔ embedding row).
-- `hierarchical_rag/retrieval.py` — RRF formula, MAX-rollup parent score, identical tokenizer at index/query time.
-- `hierarchical_rag/hooks.py` — must never raise; threshold gate; token cap.
-- `hierarchical_rag/config.py` — `HERMES_RAG_DATA_DIR` precedence is the only thing keeping tests from polluting the user's real index.
+- `advanced_rag/__init__.py` — only Hermes-coupled module. **First place to edit if API drifts.**
+- `advanced_rag/adapters.py` — closures isolate inferred shapes. Second touch point.
+- `advanced_rag/engine.py` — singleton lifecycle; lazy load + `reset()` correctness gates ambient hook latency.
+- `advanced_rag/storage.py` — atomic `.npz`/`.pkl` writes; `embed_row` invariant (chunk row ↔ embedding row).
+- `advanced_rag/retrieval.py` — RRF formula, MAX-rollup parent score, identical tokenizer at index/query time.
+- `advanced_rag/hooks.py` — must never raise; threshold gate; token cap.
+- `advanced_rag/config.py` — `HERMES_RAG_DATA_DIR` precedence is the only thing keeping tests from polluting the user's real index.
 
 ## 8. Acceptance criteria
 
 **Dev machine, after Phase 7:**
 
 - [ ] `pytest -q` reports ≥30 tests, all passing.
-- [ ] `python -c "from hierarchical_rag import register"` exits 0.
-- [ ] `python -c "import yaml; print(yaml.safe_load(open('hierarchical_rag/plugin.yaml'))['name'])"` prints `hierarchical-rag`.
-- [ ] `find hierarchical_rag -name __pycache__ -prune -o -type f -print` lists exactly the files in §4 (project layout).
+- [ ] `python -c "from advanced_rag import register"` exits 0.
+- [ ] `python -c "import yaml; print(yaml.safe_load(open('advanced_rag/plugin.yaml'))['name'])"` prints `advanced-rag`.
+- [ ] `find advanced_rag -name __pycache__ -prune -o -type f -print` lists exactly the files in §4 (project layout).
 - [ ] `git status` clean; `data/` not tracked.
 - [ ] `HERMES_API.md` exists at repo root with confirmed signatures for each item in Phase 0.
 
 **Runtime machine, after deploy:**
 
-- [ ] `hermes plugin list` shows `hierarchical-rag` enabled.
+- [ ] `hermes plugin list` shows `advanced-rag` enabled.
 - [ ] `hermes rag index ./test-corpus` (with one md file) reports 1 file, 1 parent, ≥1 chunk.
 - [ ] `/rag stats` returns counts.
 - [ ] User message containing an indexed term triggers ambient context injection (verifiable in Hermes logs).
@@ -981,7 +981,7 @@ Manual eye-pass of `__init__.py` and `adapters.py` against `HERMES_API.md`.
 
 ## 9. Dependency strategy
 
-`requirements.txt` (repo root, also copied into `hierarchical_rag/`):
+`requirements.txt` (repo root, also copied into `advanced_rag/`):
 
 ```
 # Required at runtime (must be installed in the Hermes Python env)
@@ -1008,7 +1008,7 @@ pip install numpy rank_bm25 pyyaml pytest
 Runtime machine install (full set, inside Hermes's Python env):
 
 ```bash
-cd ~/.hermes/plugins/hierarchical-rag && python -m pip install -r requirements.txt
+cd ~/.hermes/plugins/advanced-rag && python -m pip install -r requirements.txt
 ```
 
 First explicit `rag_search` triggers MiniLM (~80 MB) and (if no Cohere key) cross-encoder (~80 MB) downloads.
@@ -1022,10 +1022,10 @@ Three supported flows, in order of recommendation:
 ```bash
 rsync -av --delete \
   --exclude='__pycache__' --exclude='*.pyc' \
-  /home/sergi/Documentos/advanced-rag/hierarchical_rag/ \
-  user@runtime:~/.hermes/plugins/hierarchical-rag/
+  /home/sergi/Documentos/advanced-rag/advanced_rag/ \
+  user@runtime:~/.hermes/plugins/advanced-rag/
 
-ssh user@runtime 'cd ~/.hermes/plugins/hierarchical-rag && python -m pip install -r requirements.txt'
+ssh user@runtime 'cd ~/.hermes/plugins/advanced-rag && python -m pip install -r requirements.txt'
 ```
 
 The trailing slash on the source flattens contents (`plugin.yaml`, `*.py`, `skills/`, `requirements.txt`) into the plugin dir at the layout Hermes expects. Because `requirements.txt` is duplicated inside the package payload (Phase 7), this single rsync carries deps with no extra `--include` flags.
@@ -1033,9 +1033,9 @@ The trailing slash on the source flattens contents (`plugin.yaml`, `*.py`, `skil
 **2. git clone + symlink**
 
 ```bash
-git clone <repo-url> ~/.hermes/plugins/hierarchical-rag-source
-ln -s ~/.hermes/plugins/hierarchical-rag-source/hierarchical_rag ~/.hermes/plugins/hierarchical-rag
-cd ~/.hermes/plugins/hierarchical-rag && python -m pip install -r requirements.txt
+git clone <repo-url> ~/.hermes/plugins/advanced-rag-source
+ln -s ~/.hermes/plugins/advanced-rag-source/advanced_rag ~/.hermes/plugins/advanced-rag
+cd ~/.hermes/plugins/advanced-rag && python -m pip install -r requirements.txt
 ```
 
 **3. pip entry-point install (cleanest for distribution)**
@@ -1044,7 +1044,7 @@ cd ~/.hermes/plugins/hierarchical-rag && python -m pip install -r requirements.t
 
 ```toml
 [project.entry-points."hermes_agent.plugins"]
-hierarchical-rag = "hierarchical_rag"
+advanced-rag = "advanced_rag"
 ```
 
 On runtime:

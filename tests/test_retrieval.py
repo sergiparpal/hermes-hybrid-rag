@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import numpy as np
 from rank_bm25 import BM25Okapi
 
-from hierarchical_rag.retrieval import (
+from advanced_rag.retrieval import (
     _tokenize,
     chunks_to_parents,
     format_context,
@@ -121,7 +121,7 @@ def test_max_rollup_picks_strongest_chunk(stub_embedder):
 # --- context formatting ---
 
 def test_format_context_packs_within_cap():
-    from hierarchical_rag.retrieval import ParentResult
+    from advanced_rag.retrieval import ParentResult
 
     parents = [
         ParentResult(parent_id=1, title="A", kind="section", page_no=None,

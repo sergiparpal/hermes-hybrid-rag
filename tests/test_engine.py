@@ -1,7 +1,7 @@
 import numpy as np
 
-from hierarchical_rag.engine import RAGEngine, get_engine, set_engine_for_tests
-from hierarchical_rag.storage import Store
+from advanced_rag.engine import RAGEngine, get_engine, set_engine_for_tests
+from advanced_rag.storage import Store
 
 
 def test_get_engine_is_singleton(tmp_data_dir):
