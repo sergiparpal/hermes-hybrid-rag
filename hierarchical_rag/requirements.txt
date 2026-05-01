@@ -1,0 +1,13 @@
+# Required at runtime (must be installed in the Hermes Python env)
+sentence-transformers>=3.0
+rank_bm25>=0.2.2
+numpy>=1.26
+pyyaml>=6.0
+
+# Optional — gracefully degrade if missing
+pypdf>=4.0       # PDF support
+anthropic>=0.40  # query expansion
+cohere>=5.0      # remote reranker
+
+# Dev only
+pytest>=8.0

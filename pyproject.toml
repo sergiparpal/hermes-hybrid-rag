@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hierarchical-rag"
+version = "0.1.0"
+description = "Advanced + Hierarchical RAG over local documents (md/txt/pdf) — Hermes Agent plugin."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Sergi Parpal" }]
+license = { file = "LICENSE" }
+dependencies = [
+    "sentence-transformers>=3.0",
+    "rank_bm25>=0.2.2",
+    "numpy>=1.26",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+pdf = ["pypdf>=4.0"]
+expansion = ["anthropic>=0.40"]
+rerank = ["cohere>=5.0"]
+dev = ["pytest>=8.0"]
+
+[project.entry-points."hermes_agent.plugins"]
+hierarchical-rag = "hierarchical_rag"
+
+[tool.setuptools.packages.find]
+include = ["hierarchical_rag*"]
+
+[tool.setuptools.package-data]
+hierarchical_rag = ["plugin.yaml", "requirements.txt", "skills/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

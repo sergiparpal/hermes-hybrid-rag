@@ -1,0 +1,17 @@
+name: hierarchical-rag
+version: 0.1.0
+description: >-
+  Advanced + Hierarchical RAG over local documents (md/txt/pdf) — hybrid
+  BM25+dense search with query expansion, reranking, and parent-unit retrieval.
+author: Sergi Parpal
+provides_tools:
+  - rag_search
+  - rag_drill_down
+  - rag_list_sources
+provides_hooks:
+  - pre_llm_call
+  - on_session_start
+requires_env:
+  - COHERE_API_KEY
+  - ANTHROPIC_API_KEY
+  - HERMES_RAG_DATA_DIR
