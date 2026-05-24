@@ -228,9 +228,13 @@ Return shape:
      "rerank_score": float|null, "text": str, "page_no": int|null},
     ...
   ],
-  "expansions_used": int
+  "expansions_used": int,
+  "crag_reformulated_query": str|null,
+  "crag_reason": str|null
 }
 ```
+
+`crag_reformulated_query` is set only when CRAG-lite (Phase 4) was enabled, judged the first pass insufficient, and successfully reformulated the query. `crag_reason` carries the judge's one-line explanation when CRAG ran (even when no retry was triggered, e.g. judge call failed). Both fields are `null` when CRAG is disabled.
 
 The second-level RRF must fuse **chunk** rankings (not parent rankings) so the fusion benefits from all matched evidence; the parent rollup happens once afterward.
 
@@ -503,10 +507,10 @@ The plugin must never block on a missing optional dependency or env var.
 
 | Trigger | Behavior |
 |---|---|
-| `COHERE_API_KEY` unset OR `cohere` import fails | `rerank` falls back to local cross-encoder. |
+| `COHERE_API_KEY` unset OR `cohere` import fails | `rerank` falls back to local cross-encoder. **Ambient path never tries Cohere regardless** (Phase 3). |
 | Local cross-encoder also fails | `rerank` returns parents unchanged (identity fallback). |
-| `ANTHROPIC_API_KEY` unset OR `anthropic` import fails | `expand_query` returns `[query]` (just the original). |
-| Anthropic call raises (network, parse error) | Same — return `[query]`, log a warning. |
+| `ANTHROPIC_API_KEY` unset OR `anthropic` import fails | `expand_query` returns `[query]`; `contextual.generate_contextual_prefix` returns `None`; `crag.judge_retrieval` returns `{"sufficient": True}` so CRAG is a no-op; `crag.reformulate_query` returns `None`. |
+| Anthropic call raises (network, parse error) | Same as above — each helper degrades silently, logs a warning. |
 | `pypdf` missing | Indexing a `.pdf` raises `IndexingError` for that file but does not abort the run. |
 
 Tests cover each fallback path with mocked modules — that coverage must be maintained.

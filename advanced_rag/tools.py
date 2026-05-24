@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from . import expansion, retrieval, rerank
+from . import crag, expansion, rerank, retrieval
 from .engine import get_engine
 from .retrieval import Hit
 from .storage import Store
@@ -21,11 +21,47 @@ def _err(e: Exception) -> str:
     return json.dumps({"error": str(e), "type": type(e).__name__})
 
 
+def _run_search_pipeline(store: Store, eng, query: str, k: int):
+    """Execute one full explicit-path retrieval pass: expansion → per-variant
+    hybrid search → second-level RRF on chunks → parent rollup → rerank.
+
+    Returns (reranked_parents, expansions_used). Called twice when CRAG-lite
+    triggers a retry; otherwise once."""
+    variants = expansion.expand_query(query)
+    per_variant: list[list[int]] = []
+    for v in variants:
+        hits = retrieval.hybrid_search(eng, v, k_pool=30)
+        per_variant.append([h.chunk_id for h in hits])
+
+    fused = retrieval.rrf_fuse(per_variant)
+    if not fused:
+        return [], len(variants)
+
+    top_chunks = sorted(fused.items(), key=lambda kv: -kv[1])[:30]
+    materialized: list[Hit] = []
+    for cid, score in top_chunks:
+        pid = store.parent_id_for_chunk(cid)
+        if pid is None:
+            continue
+        materialized.append(Hit(chunk_id=cid, score=float(score), parent_id=pid))
+
+    parents = retrieval.chunks_to_parents(eng, materialized, top=10)
+    reranked = rerank.rerank(query, parents, top_k=k)
+    return reranked, len(variants)
+
+
 def tool_rag_search(args: dict, store=None, engine=None) -> str:
     """Full pipeline: expand → hybrid search per variant → second-level RRF on
     chunks → parent rollup (MAX) → rerank → top-k.
 
-    Returns JSON: {"results": [{...}, ...], "expansions_used": int}.
+    Phase 4 — when `HERMES_RAG_CRAG=1`, the pipeline is followed by a single
+    critique + reformulation retry: an LLM judges whether the parents are
+    sufficient; if not, the query is rewritten and the pipeline runs once
+    more. Hard cap is one retry; CRAG never loops.
+
+    Returns JSON: {"results": [...], "expansions_used": int,
+                   "crag_reformulated_query": str|null,
+                   "crag_reason": str|null}.
     """
     try:
         if not isinstance(args, dict):
@@ -37,27 +73,21 @@ def tool_rag_search(args: dict, store=None, engine=None) -> str:
 
         st, eng = _resolve(store, engine)
 
-        variants = expansion.expand_query(q)
-        per_variant: list[list[int]] = []
-        for v in variants:
-            hits = retrieval.hybrid_search(eng, v, k_pool=30)
-            per_variant.append([h.chunk_id for h in hits])
+        reranked, expansions_used = _run_search_pipeline(st, eng, q, k)
 
-        fused = retrieval.rrf_fuse(per_variant)
-        if not fused:
-            return json.dumps({"results": [], "expansions_used": len(variants)})
-
-        # top-30 chunks by fused score, then materialize Hit objs (parent_id from store)
-        top_chunks = sorted(fused.items(), key=lambda kv: -kv[1])[:30]
-        materialized: list[Hit] = []
-        for cid, score in top_chunks:
-            pid = st.parent_id_for_chunk(cid)
-            if pid is None:
-                continue
-            materialized.append(Hit(chunk_id=cid, score=float(score), parent_id=pid))
-
-        parents = retrieval.chunks_to_parents(eng, materialized, top=10)
-        reranked = rerank.rerank(q, parents, top_k=k)
+        crag_reformulated_query = None
+        crag_reason = None
+        if crag.is_enabled() and reranked:
+            verdict = crag.judge_retrieval(q, reranked)
+            if not verdict.get("sufficient", True):
+                crag_reason = verdict.get("reason", "")
+                new_q = crag.reformulate_query(q, reranked, crag_reason)
+                if new_q and new_q.strip() and new_q.strip() != q.strip():
+                    crag_reformulated_query = new_q
+                    # Single retry — no second judge.
+                    reranked, expansions_used = _run_search_pipeline(
+                        st, eng, new_q, k,
+                    )
 
         results = []
         for p in reranked:
@@ -71,7 +101,12 @@ def tool_rag_search(args: dict, store=None, engine=None) -> str:
                 "page_no": p.page_no,
                 "text": p.text,
             })
-        return json.dumps({"results": results, "expansions_used": len(variants)})
+        return json.dumps({
+            "results": results,
+            "expansions_used": expansions_used,
+            "crag_reformulated_query": crag_reformulated_query,
+            "crag_reason": crag_reason,
+        })
     except Exception as e:
         return _err(e)
 

@@ -89,8 +89,27 @@ query ─► expand_query → [q, p1, p2, p3, hyde]   (Haiku; falls back to [q])
                               ▼ rerank (Cohere or local cross-encoder)
                               │
                               ▼ top-k
+                         [optional, HERMES_RAG_CRAG=1]
+                         crag.judge_retrieval → sufficient? ✓ return
+                                              insufficient → reformulate
+                                                           → re-run pipeline (one retry)
+                              │
+                              ▼
                          JSON response
 ```
+
+JSON shape:
+
+```json
+{
+  "results": [{"parent_id": …, "title": …, "text": …, …}, …],
+  "expansions_used": 5,
+  "crag_reformulated_query": "string or null",
+  "crag_reason": "string or null"
+}
+```
+
+`crag_*` fields are `null` unless CRAG-lite ran and surfaced a verdict.
 
 ### Techniques used (concrete, off-the-shelf)
 
