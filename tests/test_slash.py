@@ -12,6 +12,9 @@ def test_empty_returns_status_and_help(tmp_data_dir):
     out = slash_rag("")
     assert "Ambient RAG is on" in out
     assert "/rag on" in out and "/rag off" in out and "/rag stats" in out
+    # The toggle is process-global in v0.1 (HERMES_API.md §4) — the help
+    # text must say so, otherwise gateway operators get a per-room surprise.
+    assert "process-global" in out
 
 
 def test_on_enables(tmp_data_dir):

@@ -123,6 +123,23 @@ def test_reformulate_returns_none_when_no_api_key(monkeypatch):
     assert crag_mod.reformulate_query("q", [], "x") is None
 
 
+def test_reformulate_normalizes_whitespace(monkeypatch):
+    """Multi-line LLM output collapses to a single line of tokens — keeps the
+    rewritten query honest before it's fed back to BM25 / dense retrieval."""
+    _install_scripted_anthropic(monkeypatch, responses=[
+        "\n  rewritten\tquery\n  with\nlines\n",
+    ])
+    out = crag_mod.reformulate_query("orig", [], "reason")
+    assert out == "rewritten query with lines"
+
+
+def test_reformulate_rejects_pathological_length(monkeypatch):
+    """A model that returns a wall of text instead of a query is rejected —
+    defense-in-depth bound on what we'll feed back into retrieval."""
+    _install_scripted_anthropic(monkeypatch, responses=["word " * 200])
+    assert crag_mod.reformulate_query("orig", [], "reason") is None
+
+
 def test_judge_parses_fenced_json(monkeypatch):
     _install_scripted_anthropic(monkeypatch, responses=[
         '```json\n{"sufficient": false, "reason": "missing X"}\n```'

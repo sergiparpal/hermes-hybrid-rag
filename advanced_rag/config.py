@@ -36,6 +36,14 @@ def toggles_path(data_dir: Path | None = None) -> Path:
 MAX_CHUNK = 300
 CHUNK_OVERLAP = 50
 MAX_PARENT_CHARS = 8000
+# Per-file size cap at index time. The whole file is read into memory by the
+# extractors (md/txt/pdf), so an unbounded read on a multi-GB file OOMs the
+# Hermes process. 50 MB covers ~all human-written corpora; users with larger
+# files should split them or raise this knowingly.
+MAX_INDEX_FILE_BYTES = 50 * 1024 * 1024
+# Per-page char cap for PDF extraction. A malformed / adversarial PDF can make
+# pypdf return huge per-page strings; cap before they hit chunking/embedding.
+MAX_PDF_PAGE_CHARS = 200_000
 # Markdown text before the first `##` heading is captured as a synthetic
 # "preamble" parent only when its body length (after stripping any leading
 # `# H1` line) clears this threshold. Below it the prefix is dropped on the

@@ -12,7 +12,11 @@ _HELP = (
     "  /rag           — show ambient toggle state\n"
     "  /rag on        — enable ambient context injection (default)\n"
     "  /rag off       — disable ambient context injection\n"
-    "  /rag stats     — show indexed-file counts"
+    "  /rag stats     — show indexed-file counts\n"
+    "\n"
+    "Note: the on/off toggle is process-global, not per-session. In gateway\n"
+    "deployments (Discord, Slack, …) every session sharing this Hermes\n"
+    "process sees the same setting."
 )
 
 

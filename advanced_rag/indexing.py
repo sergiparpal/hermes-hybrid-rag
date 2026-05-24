@@ -6,12 +6,12 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
+import stat as _stat
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-
-import numpy as np
 
 log = logging.getLogger(__name__)
 
@@ -21,6 +21,7 @@ from .config import (
     CHUNK_OVERLAP,
     CONTEXTUAL_CONCURRENCY,
     MAX_CHUNK,
+    MAX_INDEX_FILE_BYTES,
     bm25_path,
     npz_path,
 )
@@ -31,7 +32,6 @@ from .parents import (
     extract_pdf,
     extract_txt,
 )
-from .retrieval import _tokenize
 from .storage import Store
 
 SUPPORTED_SUFFIXES = {".md", ".txt", ".pdf"}
@@ -48,13 +48,53 @@ def _hash_file(path: Path, chunk_size: int = 65536) -> str:
     return h.hexdigest()
 
 
+def _accept_file(p: Path, *, allow_symlink: bool = False) -> bool:
+    """Decide whether to index `p`. Skips symlinks by default — they're a
+    confused-deputy vector during recursive walks: a hostile or careless
+    symlink in an indexed tree (e.g. `~/Documents/notes.md` pointing at
+    `~/.ssh/config`) would otherwise land the target's content in the
+    catalog, retrievable by every later query. Also caps file size so a
+    single huge file can't OOM the process.
+
+    `allow_symlink=True` is for the explicit-single-file path: when the user
+    runs `hermes rag index some-symlink.md`, they made that choice
+    themselves; we honor it.
+    """
+    try:
+        if not allow_symlink and p.is_symlink():
+            return False
+        st = p.stat()
+    except OSError:
+        return False
+    if not _stat.S_ISREG(st.st_mode):
+        return False
+    if p.suffix.lower() not in SUPPORTED_SUFFIXES:
+        return False
+    if st.st_size > MAX_INDEX_FILE_BYTES:
+        log.warning(
+            "skipping %s: %d bytes exceeds MAX_INDEX_FILE_BYTES (%d)",
+            p, st.st_size, MAX_INDEX_FILE_BYTES,
+        )
+        print(
+            f"[advanced-rag] skipping {p}: size exceeds "
+            f"MAX_INDEX_FILE_BYTES ({MAX_INDEX_FILE_BYTES})",
+            file=sys.stderr,
+        )
+        return False
+    return True
+
+
 def _walk(root: Path) -> list[Path]:
     if root.is_file():
-        return [root] if root.suffix.lower() in SUPPORTED_SUFFIXES else []
+        return [root] if _accept_file(root, allow_symlink=True) else []
     out: list[Path] = []
-    for p in root.rglob("*"):
-        if p.is_file() and p.suffix.lower() in SUPPORTED_SUFFIXES:
-            out.append(p)
+    # followlinks=False also prevents descending into symlinked dirs, closing
+    # the symlinked-directory attack that a per-file is_symlink check misses.
+    for dirpath, _dirs, files in os.walk(str(root), followlinks=False):
+        for name in files:
+            p = Path(dirpath) / name
+            if _accept_file(p):
+                out.append(p)
     return sorted(out)
 
 
@@ -229,46 +269,39 @@ def index_path(path, force: bool = False, store: Store | None = None,
 
 
 def rebuild_artifacts(store: Store, embedder) -> None:
-    """Rebuild embeddings.npz and bm25.pkl from the canonical SQLite chunk
-    order. Also rewrites each chunk's `embed_row` so row N of the embeddings
-    array maps to chunk_ids[N]."""
-    from rank_bm25 import BM25Okapi
-
+    """Rebuild embeddings.npz from the canonical SQLite chunk order. Also
+    rewrites each chunk's `embed_row` so row N of the embeddings array maps
+    to chunk_ids[N]. BM25 is no longer persisted — see storage.py."""
     rows = list(store.iter_chunks_ordered())
+
+    # Drop any legacy bm25.pkl regardless of whether the new index is empty.
+    # Leaving it on disk would be a stale, unreferenced pickle file — and a
+    # cohabiting attacker's planted file (the exact threat we removed pickle
+    # to address) would otherwise survive a re-index unnoticed.
+    legacy_bm25 = bm25_path(store.data_dir)
+    if legacy_bm25.exists():
+        try:
+            legacy_bm25.unlink()
+        except OSError:
+            pass
+
     if not rows:
-        # wipe artifacts so an empty index doesn't load stale data
-        for p in (npz_path(store.data_dir), bm25_path(store.data_dir)):
-            if p.exists():
-                p.unlink()
+        npz_p = npz_path(store.data_dir)
+        if npz_p.exists():
+            npz_p.unlink()
         return
 
-    # Phase 2: prefer the contextual-composed text when present; fall back to
-    # the raw chunk for rows indexed without contextual retrieval. Both lists
-    # are the same length and in canonical order.
     embed_texts = [r.effective_embedding_text for r in rows]
-    bm25_texts = [r.effective_bm25_text for r in rows]
     chunk_ids = [r.id for r in rows]
 
     embeddings = embedder.encode(embed_texts)
     if embeddings.shape[0] != len(embed_texts):
         raise RuntimeError("embedder returned wrong number of vectors")
 
-    tokenized = [_tokenize(t) for t in bm25_texts]
-    bm25 = BM25Okapi(tokenized)
+    store.save_embeddings(npz_path(store.data_dir), embeddings)
 
-    # Stage both .tmp files first, then commit back-to-back: embeddings.npz
-    # and bm25.pkl land within microseconds of each other instead of "two
-    # independent atomic writes" with a multi-millisecond gap between them.
-    store.save_artifacts(
-        npz_path(store.data_dir), embeddings,
-        bm25_path(store.data_dir), bm25,
-    )
-
-    # canonical row-index ↔ chunk_id mapping into SQLite
     store.bulk_update_embed_rows([(cid, row) for row, cid in enumerate(chunk_ids)])
 
-    # Pin the embedding model id (and dim) that produced this .npz so a
-    # subsequent load can warn loudly when the configured model has changed.
     model_name = getattr(embedder, "model_name", None) or getattr(
         embedder, "_model_name", "unknown"
     )

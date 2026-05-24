@@ -2,7 +2,6 @@ import os
 from pathlib import Path
 
 import numpy as np
-import pytest
 
 from advanced_rag.storage import Store
 
@@ -142,57 +141,19 @@ def test_save_embeddings_accepts_chunk_ids_for_compat(tmp_data_dir):
         assert "chunk_ids" not in data.files
 
 
-def test_save_bm25_atomic(tmp_data_dir):
+def test_iter_bm25_texts_prefers_contextual(tmp_data_dir):
+    """Phase 2: when text_for_bm25 is present it shadows the raw chunk text;
+    otherwise the raw text is yielded. The engine builds BM25 from this
+    stream — pickle is gone, the only persistent BM25 source is SQLite."""
     store = Store()
-    obj = {"k": [1, 2, 3]}
-    store.save_bm25(store.bm25_path, obj)
-    loaded = store.load_bm25(store.bm25_path)
-    assert loaded == obj
-
-
-def test_save_artifacts_writes_both_atomically(tmp_data_dir):
-    """The combined writer must leave both files in place and clean up tmps."""
-    store = Store()
-    arr = np.arange(12, dtype=np.float32).reshape(3, 4)
-    bm = {"k": [1, 2, 3]}
-    store.save_artifacts(store.npz_path, arr, store.bm25_path, bm)
-    assert np.array_equal(store.load_embeddings(store.npz_path), arr)
-    assert store.load_bm25(store.bm25_path) == bm
-    for p in (store.npz_path, store.bm25_path):
-        assert not p.with_suffix(p.suffix + ".tmp").exists()
-
-
-def test_save_artifacts_rolls_forward_neither_on_bm25_failure(
-    tmp_data_dir, monkeypatch
-):
-    """If staging the bm25 .tmp fails, neither file is rolled forward —
-    consistency over half-rolled-forward state."""
-    store = Store()
-    # write a known-good baseline to assert nothing changed
-    baseline_arr = np.zeros((1, 1), dtype=np.float32)
-    baseline_bm = {"baseline": True}
-    store.save_artifacts(store.npz_path, baseline_arr, store.bm25_path, baseline_bm)
-
-    # now make pickle.dump blow up; the .npz.tmp will be staged but not
-    # promoted, and the .pkl.tmp write itself errors.
-    import advanced_rag.storage as storage_mod
-
-    def boom(_obj, _fh):
-        raise RuntimeError("synthetic pickle failure")
-
-    monkeypatch.setattr(storage_mod.pickle, "dump", boom)
-
-    new_arr = np.ones((2, 2), dtype=np.float32)
-    new_bm = {"new": True}
-    with pytest.raises(RuntimeError, match="synthetic"):
-        store.save_artifacts(store.npz_path, new_arr, store.bm25_path, new_bm)
-
-    # both files retain their baseline contents
-    assert np.array_equal(store.load_embeddings(store.npz_path), baseline_arr)
-    assert store.load_bm25(store.bm25_path) == baseline_bm
-    # tmp files cleaned up
-    for p in (store.npz_path, store.bm25_path):
-        assert not p.with_suffix(p.suffix + ".tmp").exists()
+    fid = store.bulk_insert_files([("/x.md", 0.0, 0, "h", "md", 0.0)])["/x.md"]
+    pid = store.bulk_insert_parents([(fid, 0, "section", "T", None, "x", 1)])[0]
+    store.bulk_insert_chunks([
+        (pid, 0, "raw-zero", 0),  # no text_for_bm25 → raw text
+        (pid, 1, "raw-one", 0, "prefix", "raw-one-embed", "composed-one"),
+    ])
+    out = list(store.iter_bm25_texts_ordered())
+    assert out == ["raw-zero", "composed-one"]
 
 
 def test_parent_ids_for_chunks_batched(tmp_data_dir):

@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from .config import MAX_PARENT_CHARS, PREAMBLE_MIN_CHARS
+from .config import MAX_PARENT_CHARS, MAX_PDF_PAGE_CHARS, PREAMBLE_MIN_CHARS
 
 PdfReader = None  # patched by tests; lazily imported in extract_pdf
 
@@ -150,6 +150,10 @@ def extract_pdf(path: Path) -> list[Parent]:
         text = page.extract_text() or ""
         if not text.strip():
             continue
+        # Cap per-page text. Malformed PDFs can return amplified strings
+        # that blow up downstream chunking / embedding cost.
+        if len(text) > MAX_PDF_PAGE_CHARS:
+            text = text[:MAX_PDF_PAGE_CHARS]
         parents.append(Parent(kind="page", title=f"Page {i + 1}", text=text,
                               page_no=i + 1))
     return _enforce_parent_cap(parents)

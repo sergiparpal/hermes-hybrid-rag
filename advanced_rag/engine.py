@@ -1,13 +1,16 @@
 """Process-wide RAG engine. Holds the (lazily loaded) BM25, embeddings array,
 chunk_id list, embedder, and store. `reset()` drops cached state so a re-index
 flushes the next query.
+
+BM25 is rebuilt from SQLite at load time rather than read from a pickle —
+see `storage.py` module docstring for the security reasoning.
 """
 from __future__ import annotations
 
 import logging
 import threading
 
-from .config import bm25_path, npz_path
+from .config import npz_path
 from .storage import Store
 
 log = logging.getLogger(__name__)
@@ -52,34 +55,38 @@ class RAGEngine:
                 self._embedder = self._make_default_embedder()
 
             npz_p = npz_path(self._store.data_dir)
-            bm25_p = bm25_path(self._store.data_dir)
 
             if npz_p.exists():
                 self._embeddings = self._store.load_embeddings(npz_p)
-                # chunk_ids is now derived from SQLite (canonical order) rather
-                # than carried in the .npz — embed_row in the DB is the source
-                # of truth for the row-index ↔ chunk-id mapping. Pull only
-                # the ids (not the full row payload) to keep cold load fast
-                # on large corpora.
                 self._chunk_ids = self._store.get_chunk_ids_ordered()
+                self._bm25 = self._build_bm25()
             else:
                 self._embeddings = None
                 self._chunk_ids = []
-
-            if bm25_p.exists():
-                self._bm25 = self._store.load_bm25(bm25_p)
-            else:
                 self._bm25 = None
 
             self._check_consistency()
             self._loaded = True
 
+    def _build_bm25(self):
+        """Build BM25Okapi from the SQLite chunks table. Returns None for an
+        empty corpus. Identical tokenizer to query time — `retrieval._tokenize`
+        is the single source so index- and query-side tokens stay aligned.
+        """
+        from rank_bm25 import BM25Okapi
+
+        from .retrieval import _tokenize
+
+        tokenized = [_tokenize(t) for t in self._store.iter_bm25_texts_ordered()]
+        if not tokenized:
+            return None
+        return BM25Okapi(tokenized)
+
     def _check_consistency(self) -> None:
         """Refuse to serve queries if the loaded artifacts disagree about
-        cardinality — a partial rebuild can leave .npz, bm25.pkl, and the
-        SQLite chunks table in inconsistent states."""
+        cardinality — a partial rebuild can leave .npz and the SQLite chunks
+        table in inconsistent states."""
         if self._embeddings is None:
-            # No artifacts loaded; nothing to check.
             return
         n_emb = int(self._embeddings.shape[0])
         n_ids = len(self._chunk_ids)
@@ -91,16 +98,6 @@ class RAGEngine:
                 f"embeddings array has {n_emb} rows but SQLite has "
                 f"{n_ids} chunks — re-run `hermes rag index <path> --force`."
             )
-        if self._bm25 is not None:
-            bm25_n = self._bm25_doc_count()
-            if bm25_n is not None and bm25_n != n_emb:
-                self._embeddings = None
-                self._chunk_ids = []
-                self._bm25 = None
-                raise EngineLoadError(
-                    f"BM25 was built for {bm25_n} docs but embeddings has "
-                    f"{n_emb} — re-run `hermes rag index <path> --force`."
-                )
 
         # Embedding-model alignment: catch the silent corruption case where
         # the .npz was built with a different model than the currently
@@ -147,18 +144,6 @@ class RAGEngine:
                 "`hermes rag index --force` rebuilds the .npz.",
                 on_disk_model, configured_model,
             )
-
-    def _bm25_doc_count(self) -> int | None:
-        """Best-effort document count for the loaded BM25 instance.
-        rank_bm25's BM25Okapi keeps `corpus_size`; older or stub objects may
-        not, so we degrade silently rather than refuse to load."""
-        n = getattr(self._bm25, "corpus_size", None)
-        if isinstance(n, int):
-            return n
-        doc_freqs = getattr(self._bm25, "doc_freqs", None)
-        if isinstance(doc_freqs, list):
-            return len(doc_freqs)
-        return None
 
     def reset(self) -> None:
         with self._lock:

@@ -25,7 +25,102 @@ def test_index_path_creates_artifacts(tmp_data_dir, tmp_path, stub_embedder):
     assert summary["parents"] >= 3
     assert summary["chunks"] >= 3
     assert store.npz_path.exists()
+    # BM25 is no longer persisted — it's rebuilt from SQLite on engine load.
+    # Any bm25.pkl on disk would be either a stale legacy file or a planted
+    # one; either way, indexing must leave none behind.
+    assert not store.bm25_path.exists()
+
+
+def test_index_unlinks_legacy_bm25_pickle(tmp_data_dir, tmp_path, stub_embedder):
+    """A bm25.pkl left behind by a pre-fix install — or planted by an
+    attacker into HERMES_RAG_DATA_DIR — must be removed during the next
+    index so it can never be loaded by a future code path."""
+    docs = _stage(tmp_path)
+    store = Store()
+    # Plant a pickle file before indexing.
+    store.bm25_path.parent.mkdir(parents=True, exist_ok=True)
+    store.bm25_path.write_bytes(b"\x80\x04this-should-be-removed")
     assert store.bm25_path.exists()
+
+    index_path(docs, store=store, embedder=stub_embedder)
+    assert not store.bm25_path.exists()
+
+
+def test_walk_skips_symlinks(tmp_data_dir, tmp_path, stub_embedder):
+    """Symlinks discovered during a recursive walk must not be followed —
+    indexing them would land the symlink target's content (e.g. ~/.ssh/...)
+    in the catalog where every later query can surface it."""
+    from advanced_rag.indexing import _walk
+
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    real = tmp_path / "outside_secret.md"
+    real.write_text("# Secret\n\n## Section\nsensitive content\n")
+
+    real_doc = docs / "ok.md"
+    real_doc.write_text("# Hi\n\n## Topic\nbody")
+
+    # Plant a symlink inside the indexed dir that points outside.
+    link = docs / "innocent_looking.md"
+    link.symlink_to(real)
+
+    out = _walk(docs)
+    assert real_doc in out
+    assert link not in out
+    assert real not in out
+
+
+def test_walk_skips_symlinked_directories(tmp_data_dir, tmp_path, stub_embedder):
+    """os.walk(followlinks=False) prevents descent into symlinked dirs —
+    closes the variant where the attacker symlinks a whole directory."""
+    from advanced_rag.indexing import _walk
+
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "ok.md").write_text("# Hi\n\n## Topic\nbody")
+
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    (outside / "secret.md").write_text("# Secret\n\n## Bad\nsensitive")
+
+    (docs / "shortcut").symlink_to(outside)
+
+    out = _walk(docs)
+    paths = {str(p) for p in out}
+    assert str(docs / "ok.md") in paths
+    assert not any("secret.md" in p for p in paths)
+
+
+def test_walk_skips_oversized_file(tmp_data_dir, tmp_path, monkeypatch, capsys):
+    """Files above MAX_INDEX_FILE_BYTES are skipped with a stderr warning —
+    OOM protection: extractors load the whole file into memory."""
+    from advanced_rag import indexing as indexing_mod
+
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "small.md").write_text("# T\n\n## S\nbody")
+    (docs / "big.md").write_text("x" * 1024)  # 1 KiB
+
+    monkeypatch.setattr(indexing_mod, "MAX_INDEX_FILE_BYTES", 512)
+    out = indexing_mod._walk(docs)
+    names = {p.name for p in out}
+    assert "small.md" in names
+    assert "big.md" not in names
+    assert "exceeds MAX_INDEX_FILE_BYTES" in capsys.readouterr().err
+
+
+def test_walk_honors_explicit_symlink_root(tmp_data_dir, tmp_path):
+    """A symlink chosen explicitly by the user (single-file index target) is
+    honored — only recursive walks reject symlinks."""
+    from advanced_rag.indexing import _walk
+
+    real = tmp_path / "real.md"
+    real.write_text("# T\n\n## S\nbody")
+    link = tmp_path / "link.md"
+    link.symlink_to(real)
+
+    out = _walk(link)
+    assert out == [link]
 
 
 def test_index_skips_unchanged(tmp_data_dir, tmp_path, stub_embedder):

@@ -24,7 +24,9 @@ def _try_cohere(query: str, parents: list[ParentResult], top_k: int) -> list[Par
 
     try:
         client_cls = getattr(cohere, "ClientV2", None) or cohere.Client
-        client = client_cls(os.environ["COHERE_API_KEY"])
+        # Let the SDK pull the key from COHERE_API_KEY itself. Passing it
+        # positionally invites it into constructor-arg traces / reprs.
+        client = client_cls()
         response = client.rerank(
             model=COHERE_RERANK_MODEL,
             query=query,

@@ -2,8 +2,6 @@ import argparse
 import json
 from pathlib import Path
 
-import pytest
-
 from advanced_rag import cli, indexing
 from advanced_rag.storage import Store
 
@@ -72,20 +70,75 @@ def test_handle_stats(tmp_data_dir, capsys):
     assert payload["files"] == 0
 
 
+def _seed_artifacts(data_dir: Path):
+    """Drop the four files clear is supposed to own into data_dir."""
+    from advanced_rag.config import bm25_path, db_path, npz_path, toggles_path
+
+    for p in (db_path(data_dir), npz_path(data_dir),
+              bm25_path(data_dir), toggles_path(data_dir)):
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"x")
+
+
 def test_handle_clear_declined(tmp_data_dir, capsys):
+    _seed_artifacts(tmp_data_dir)
     args = argparse.Namespace(rag_cmd="clear", yes=False)
     code = cli.handle_rag(args, _input=lambda _: "n")
     assert code == 1
     assert "aborted" in capsys.readouterr().out
 
 
-def test_handle_clear_confirmed(tmp_data_dir, capsys):
-    # write a sentinel into the data dir so we can prove rmtree happened
-    (tmp_data_dir / "sentinel.txt").write_text("x")
+def test_handle_clear_confirmed_unlinks_owned_files_only(tmp_data_dir, capsys):
+    """clear unlinks only the artifacts the plugin owns. Anything else the
+    user (or another tool) parked under HERMES_RAG_DATA_DIR is left alone —
+    the previous rmtree behavior was a foot-gun anywhere the data dir got
+    misconfigured."""
+    _seed_artifacts(tmp_data_dir)
+    foreign = tmp_data_dir / "user_notes.md"
+    foreign.write_text("important user data")
+
     args = argparse.Namespace(rag_cmd="clear", yes=True)
     code = cli.handle_rag(args)
     assert code == 0
-    assert not (tmp_data_dir / "sentinel.txt").exists()
+
+    from advanced_rag.config import bm25_path, db_path, npz_path, toggles_path
+    for p in (db_path(tmp_data_dir), npz_path(tmp_data_dir),
+              bm25_path(tmp_data_dir), toggles_path(tmp_data_dir)):
+        assert not p.exists()
+    assert foreign.exists()
+    assert foreign.read_text() == "important user data"
+
+
+def test_handle_clear_nothing_to_do(tmp_data_dir, capsys):
+    """Empty data dir → exit 0 with a friendly message; never prompts."""
+    args = argparse.Namespace(rag_cmd="clear", yes=False)
+    sentinel_prompted = {"called": False}
+
+    def _input(_):
+        sentinel_prompted["called"] = True
+        return "n"
+
+    code = cli.handle_rag(args, _input=_input)
+    assert code == 0
+    assert sentinel_prompted["called"] is False
+    assert "nothing to remove" in capsys.readouterr().out
+
+
+def test_handle_clear_works_outside_safe_path(monkeypatch, tmp_path, capsys):
+    """The denylist heuristic is gone. With artifact-only unlink, even a
+    `--yes` clear on an unusual HERMES_RAG_DATA_DIR is bounded to the four
+    files we own — non-artifacts stay put. Exercises a non-default data dir."""
+    odd_dir = tmp_path / "weird"
+    odd_dir.mkdir()
+    monkeypatch.setenv("HERMES_RAG_DATA_DIR", str(odd_dir))
+    _seed_artifacts(odd_dir)
+    foreign = odd_dir / "keep_me.txt"
+    foreign.write_text("kept")
+
+    args = argparse.Namespace(rag_cmd="clear", yes=True)
+    code = cli.handle_rag(args)
+    assert code == 0
+    assert foreign.exists()
 
 
 def test_handle_unknown_subcommand_returns_two(capsys):
@@ -101,51 +154,3 @@ def test_handle_index_returns_two_on_failure(tmp_data_dir, monkeypatch, capsys):
     args = argparse.Namespace(rag_cmd="index", path="/tmp/whatever", force=False)
     code = cli.handle_rag(args)
     assert code == 2
-
-
-def test_clear_refuses_root_path(monkeypatch, capsys):
-    """`hermes rag clear --yes` must refuse system roots."""
-    monkeypatch.setenv("HERMES_RAG_DATA_DIR", "/")
-    args = argparse.Namespace(rag_cmd="clear", yes=True)
-    code = cli.handle_rag(args)
-    assert code == 2
-    err = capsys.readouterr().err
-    assert "refusing" in err.lower()
-
-
-def test_clear_refuses_home_dir(monkeypatch, capsys):
-    """Refuses $HOME exactly — can't accidentally wipe a user dir."""
-    from pathlib import Path
-    monkeypatch.setenv("HERMES_RAG_DATA_DIR", str(Path.home()))
-    args = argparse.Namespace(rag_cmd="clear", yes=True)
-    code = cli.handle_rag(args)
-    assert code == 2
-
-
-def test_clear_refuses_shallow_path(monkeypatch, capsys):
-    """Refuses paths with fewer than three meaningful segments."""
-    monkeypatch.setenv("HERMES_RAG_DATA_DIR", "/var/foo")
-    args = argparse.Namespace(rag_cmd="clear", yes=True)
-    code = cli.handle_rag(args)
-    assert code == 2
-
-
-def test_clear_allows_safe_path(tmp_data_dir, capsys):
-    """tmp_data_dir is created under pytest's tmp_path which is deeply nested,
-    so it should be allowed."""
-    (tmp_data_dir / "sentinel.txt").write_text("x")
-    args = argparse.Namespace(rag_cmd="clear", yes=True)
-    code = cli.handle_rag(args)
-    assert code == 0
-    assert not (tmp_data_dir / "sentinel.txt").exists()
-
-
-def test_is_safe_clear_target_unit():
-    """Quick unit test on the predicate so future renames don't accidentally
-    weaken the guard."""
-    from pathlib import Path
-    assert not cli._is_safe_clear_target(Path("/"))
-    assert not cli._is_safe_clear_target(Path("/etc"))
-    assert not cli._is_safe_clear_target(Path.home())
-    assert not cli._is_safe_clear_target(Path("/foo/bar"))  # too shallow
-    assert cli._is_safe_clear_target(Path.home() / ".hermes" / "plugins" / "advanced-rag" / "data")

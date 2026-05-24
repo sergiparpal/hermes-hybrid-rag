@@ -7,40 +7,30 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import shutil
 import sys
 from pathlib import Path
 
 from . import indexing
-from .config import get_data_dir
+from .config import bm25_path, db_path, get_data_dir, npz_path, toggles_path
 from .storage import Store
 
 log = logging.getLogger(__name__)
 
-# `hermes rag clear --yes` skips the confirmation prompt, so we must refuse
-# obviously-dangerous targets (e.g. a misconfigured HERMES_RAG_DATA_DIR=/).
-_FORBIDDEN_CLEAR_TARGETS = {
-    Path("/"), Path("/etc"), Path("/usr"), Path("/bin"), Path("/sbin"),
-    Path("/var"), Path("/boot"), Path("/lib"), Path("/lib64"), Path("/sys"),
-    Path("/proc"), Path("/dev"), Path("/root"), Path("/home"), Path("/opt"),
-    Path("/srv"), Path("/tmp"), Path("/run"), Path("/mnt"), Path("/media"),
-    Path.home(),
-}
 
+def _owned_artifacts(data_dir: Path) -> list[Path]:
+    """The files this plugin actually owns inside the data dir.
 
-def _is_safe_clear_target(data_dir: Path) -> bool:
-    """Refuse rmtree on system roots, $HOME, or any path so short it's
-    suspicious. The cheap-and-strict check that catches misconfigured envs."""
-    try:
-        resolved = data_dir.resolve()
-    except (OSError, RuntimeError):
-        return False
-    if resolved in _FORBIDDEN_CLEAR_TARGETS:
-        return False
-    parts = [p for p in resolved.parts if p not in ("/", "")]
-    # A trustworthy data dir has at least three meaningful segments
-    # (e.g. /home/<user>/.hermes/...) — refuse anything shallower.
-    return len(parts) >= 3
+    `clear` only unlinks these; anything else the user (or another tool)
+    has placed in HERMES_RAG_DATA_DIR is left alone. This replaces the
+    previous denylist-guarded `rmtree`, which would have happily wiped any
+    sibling content under a deeply-nested data dir.
+    """
+    return [
+        db_path(data_dir),
+        npz_path(data_dir),
+        bm25_path(data_dir),  # legacy file from the old pickle path
+        toggles_path(data_dir),
+    ]
 
 
 def setup_rag_parser(parser: argparse.ArgumentParser) -> None:
@@ -70,24 +60,25 @@ def handle_rag(args: argparse.Namespace, *, _indexer=indexing,
             return 0
         if cmd == "clear":
             data_dir = get_data_dir()
-            if not _is_safe_clear_target(data_dir):
-                print(
-                    f"refusing to remove {data_dir!s}: looks like a system or "
-                    "shallow path. Set HERMES_RAG_DATA_DIR to something under "
-                    "your home directory.",
-                    file=sys.stderr,
-                )
-                return 2
+            artifacts = _owned_artifacts(data_dir)
+            present = [p for p in artifacts if p.exists()]
+            if not present:
+                print(f"nothing to remove at {data_dir}")
+                return 0
             if not bool(getattr(args, "yes", False)):
-                resp = _input(f"Delete RAG data at {data_dir}? [y/N] ").strip().lower()
+                names = ", ".join(p.name for p in present)
+                resp = _input(
+                    f"Delete RAG artifacts ({names}) in {data_dir}? [y/N] "
+                ).strip().lower()
                 if resp not in ("y", "yes"):
                     print("aborted")
                     return 1
-            if data_dir.exists():
-                shutil.rmtree(data_dir)
-                print(f"removed {data_dir}")
-            else:
-                print(f"nothing to remove at {data_dir}")
+            for p in present:
+                try:
+                    p.unlink()
+                except OSError as e:
+                    log.warning("failed to unlink %s: %s", p, e)
+            print(f"removed {len(present)} file(s) from {data_dir}")
             return 0
         print(f"unknown rag subcommand: {cmd!r}", file=sys.stderr)
         return 2

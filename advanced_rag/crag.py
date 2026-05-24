@@ -43,6 +43,11 @@ _REFORMULATE_PROMPT = (
 )
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
+_WHITESPACE_RE = re.compile(r"\s+")
+# Hard cap on the rewritten query length. The prompt asks for ≤25 words; this
+# is a defense-in-depth bound that also rejects an LLM that returns a wall of
+# text instead of a query.
+_REFORMULATED_MAX_CHARS = 500
 
 _CLIENT = None
 
@@ -156,7 +161,13 @@ def reformulate_query(
         # backticks, smart quotes (U+2018-201D), and surrounding whitespace.
         # The prompt asks for the query alone, but Haiku occasionally wraps it.
         text = text.strip("\"' \n\t`‘’“”")
-        return text or None
+        # Collapse any internal whitespace (newlines, tabs) into single
+        # spaces — the rewritten query is fed back into retrieval and BM25
+        # tokenization, so multi-line garbage here just adds noise.
+        text = _WHITESPACE_RE.sub(" ", text).strip()
+        if not text or len(text) > _REFORMULATED_MAX_CHARS:
+            return None
+        return text
     except Exception as e:
         log.warning("CRAG reformulate failed: %s", e)
         return None

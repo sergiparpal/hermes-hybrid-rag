@@ -1,12 +1,16 @@
 """SQLite-backed catalog for files, parents, chunks + atomic writes for the
-embeddings .npz and the BM25 pickle. The single source of truth for chunk
-ordering: SELECT chunks ordered by (parent_id, ord) — the row index in that
-ordering equals the row index in the embeddings array (the `embed_row`).
+embeddings .npz. The single source of truth for chunk ordering: SELECT chunks
+ordered by (parent_id, ord) — the row index in that ordering equals the row
+index in the embeddings array (the `embed_row`).
+
+BM25 is intentionally NOT persisted to disk: it's rebuilt from `chunks` on
+every engine load. The previous pickle-on-disk path was a code-execution
+sink (CWE-502) for anyone who could write the data dir. Tokenization is
+cheap; pickle is forever.
 """
 from __future__ import annotations
 
 import os
-import pickle
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -472,66 +476,15 @@ class Store:
         with np.load(target_path) as data:
             return data["embeddings"]
 
-    def save_bm25(self, target_path: Path, bm25_obj) -> None:
-        target = Path(target_path)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        tmp = target.with_suffix(target.suffix + ".tmp")
-        try:
-            with open(tmp, "wb") as f:
-                pickle.dump(bm25_obj, f)
-            os.replace(tmp, target)
-        finally:
-            if tmp.exists():
-                try:
-                    tmp.unlink()
-                except OSError:
-                    pass
+    def iter_bm25_texts_ordered(self) -> Iterator[str]:
+        """BM25 text per chunk in canonical (parent_id, ord) order.
 
-    def load_bm25(self, target_path: Path):
-        # Security note: `pickle.load` is unsafe on untrusted bytes — a tampered
-        # bm25.pkl can execute arbitrary code at load time. Threat model: the
-        # data dir (default `~/.hermes/plugins/advanced-rag/data/`) is owned by
-        # the same user that runs Hermes; anyone who can write here can already
-        # run code as that user. Don't point HERMES_RAG_DATA_DIR at a path
-        # writable by another user / process.
-        with open(target_path, "rb") as f:
-            return pickle.load(f)
-
-    def save_artifacts(
-        self,
-        npz_target: Path,
-        embeddings: np.ndarray,
-        bm25_target: Path,
-        bm25_obj,
-    ) -> None:
-        """Write embeddings.npz and bm25.pkl with a tightened atomicity window.
-
-        Both ``.tmp`` files are staged in full first; only after both writes
-        succeed do we run ``os.replace`` on each, back to back. The desync
-        window between "embeddings rolled forward" and "bm25 rolled forward"
-        shrinks from "the time of one full pickle dump" to the time between
-        two ``os.replace`` calls (microseconds). The engine's load-time
-        consistency check still has to cover the residual case.
+        Prefers the contextual-composed text (Phase 2) when present, falls
+        back to raw chunk text. Used by the engine to rebuild BM25 from
+        SQLite at load time — see module docstring for why pickle is gone.
         """
-        npz_target = Path(npz_target)
-        bm25_target = Path(bm25_target)
-        npz_target.parent.mkdir(parents=True, exist_ok=True)
-        bm25_target.parent.mkdir(parents=True, exist_ok=True)
-
-        npz_tmp = npz_target.with_suffix(npz_target.suffix + ".tmp")
-        bm25_tmp = bm25_target.with_suffix(bm25_target.suffix + ".tmp")
-
-        try:
-            with open(npz_tmp, "wb") as fh:
-                np.savez(fh, embeddings=embeddings)
-            with open(bm25_tmp, "wb") as fh:
-                pickle.dump(bm25_obj, fh)
-            os.replace(npz_tmp, npz_target)
-            os.replace(bm25_tmp, bm25_target)
-        finally:
-            for tmp in (npz_tmp, bm25_tmp):
-                if tmp.exists():
-                    try:
-                        tmp.unlink()
-                    except OSError:
-                        pass
+        conn = self.connect()
+        for r in conn.execute(
+            "SELECT text, text_for_bm25 FROM chunks ORDER BY parent_id, ord"
+        ):
+            yield r["text_for_bm25"] or r["text"]
