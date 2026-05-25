@@ -40,10 +40,10 @@ flowchart TB
         C -. opt-in .-> Ctx["contextual.generate_contextual_prefix<br/>(claude-haiku-4-5, prompt-cached)"]
         Ctx --> S[(SQLite catalog: files/parents/chunks/meta)]
         C --> S
-        S --> A["ArtifactStore<br/>atomic .npz write"]
+        S --> A["ArtifactStore<br/>atomic .npz + bm25_state.json write"]
         S -.-> V["meta.index_version bumped<br/>→ engine reload on next call"]
     end
-    Index --> Engine["RAGEngine singleton<br/>(BM25 rebuilt from SQLite at load,<br/>.npz mmap, Embedder, version check)"]
+    Index --> Engine["RAGEngine singleton<br/>(BM25 sidecar load · SQLite rebuild fallback,<br/>.npz mmap, Embedder, version check)"]
     Engine -->|ambient| AP["AmbientPipeline<br/>hybrid → top-10 → local rerank → top-3<br/>1500-tok cap · 0.25 threshold"]
     Engine -->|explicit| EP["ExplicitPipeline<br/>expansion → hybrid×N → 2-level RRF<br/>→ rerank · optional CRAG retry"]
     AP --> Hook["hooks.ambient_pre_llm_call<br/>{context: …} | None"]
@@ -51,11 +51,16 @@ flowchart TB
     Tools --> JSON["JSON result string"]
 ```
 
-BM25 is rebuilt from SQLite on every engine load — the index is *not*
-persisted as a pickle. The previous pickle path was a code-execution sink
-(CWE-502) for anyone who could write the data dir; tokenization is cheap,
-deserialization is forever. Indexing also unlinks any legacy `bm25.pkl`
-left behind by an older install or a hostile cohabiter.
+BM25 is persisted at index time to a JSON sidecar (`bm25_state.json`)
+and loaded directly on engine startup — a 100K-chunk corpus decodes in
+~100 ms instead of the ~1–3 s a from-SQLite re-tokenize would cost. The
+sidecar is JSON rather than pickle deliberately: the previous pickle
+path was a code-execution sink (CWE-502) for anyone who could write the
+data dir, and tokenization is cheap but deserialization is forever. If
+the sidecar is missing or its `corpus_size` disagrees with the chunk
+table (older install, manual delete, partial rebuild), the engine falls
+back to a from-SQLite rebuild. Indexing also unlinks any legacy
+`bm25.pkl` left behind by an older install or a hostile cohabiter.
 
 The indexing path bumps `meta.index_version` after a successful rebuild;
 the engine reads that key on every `hybrid_search` and transparently
@@ -404,7 +409,7 @@ reason to change:
 | Optional feature modules | `expansion.py`, `crag.py`, `contextual.py`, `convo.py` | Each opt-in via one env var; degrade silently when the SDK / API key is missing. |
 | Retrieval primitives | `retrieval.py`, `formatting.py`, `rerank.py` | Hybrid search, RRF, MAX rollup; prompt-injection-safe presentation; reranker cascade. |
 | Engine | `engine.py`, `validation.py` | Process singleton holding BM25 + `.npz` + chunk ids; exposes `hybrid_search` so callers never touch `_ensure_loaded`. |
-| Storage | `storage.py`, `artifacts.py`, `manifest.py` | SQLite catalog, atomic `.npz` I/O, filesystem ↔ catalog diff — three classes, three reasons to change. |
+| Storage | `storage.py`, `artifacts.py`, `manifest.py` | SQLite catalog, atomic `.npz` + BM25-sidecar I/O, filesystem ↔ catalog diff — three classes, three reasons to change. |
 | Indexing | `indexing.py`, `extractors.py`, `parents.py`, `chunking.py`, `embeddings.py` | Walk → diff → extract → chunk → embed → write. New file types register through `ExtractorRegistry`. |
 | Cross-cutting | `models.py`, `protocols.py`, `config.py`, `state.py`, `_anthropic.py` | Data classes, typing contracts, paths + cross-cutting tunables, ambient toggle, shared Anthropic client. |
 
