@@ -16,9 +16,9 @@ from pathlib import Path
 
 import pytest
 
-from advanced_rag import _anthropic, contextual
-from advanced_rag.indexing import index_path
-from advanced_rag.storage import Store
+from hybrid_rag import _anthropic, contextual
+from hybrid_rag.indexing import index_path
+from hybrid_rag.storage import Store
 
 FIXTURES = Path(__file__).parent / "fixtures" / "docs"
 

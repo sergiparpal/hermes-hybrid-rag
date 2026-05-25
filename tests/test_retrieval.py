@@ -3,8 +3,8 @@ from dataclasses import dataclass
 import numpy as np
 from rank_bm25 import BM25Okapi
 
-from advanced_rag.formatting import format_context
-from advanced_rag.retrieval import (
+from hybrid_rag.formatting import format_context
+from hybrid_rag.retrieval import (
     _tokenize,
     chunks_to_parents,
     hybrid_search,
@@ -133,7 +133,7 @@ def test_max_rollup_picks_strongest_chunk(stub_embedder):
 # --- context formatting ---
 
 def test_format_context_packs_within_cap():
-    from advanced_rag.models import ParentResult
+    from hybrid_rag.models import ParentResult
 
     parents = [
         ParentResult(parent_id=1, title="A", kind="section", page_no=None,
@@ -155,7 +155,7 @@ def test_format_context_wraps_content_in_retrieved_document_tags():
     """Prompt-injection mitigation: each parent is surrounded by
     `<retrieved_document>` tags and the block is preceded by a header that
     tells the model to treat the wrapped content as data."""
-    from advanced_rag.models import ParentResult
+    from hybrid_rag.models import ParentResult
 
     parents = [
         ParentResult(parent_id=1, title="A", kind="section", page_no=None,
@@ -172,7 +172,7 @@ def test_format_context_defangs_closing_wrapper_in_content():
     """A document author who plants the literal `</retrieved_document>`
     string inside chunk text could otherwise close the wrapper early and
     have the rest of the chunk parsed as live instructions."""
-    from advanced_rag.models import ParentResult
+    from hybrid_rag.models import ParentResult
 
     hostile = (
         "innocent prefix\n"
@@ -195,7 +195,7 @@ def test_format_context_defangs_closing_wrapper_in_content():
 
 
 def test_effective_score_prefers_rerank():
-    from advanced_rag.models import ParentResult
+    from hybrid_rag.models import ParentResult
 
     p = ParentResult(parent_id=1, title="A", kind="section", page_no=None,
                      text="x", source_path="/x.md", score=0.05,
@@ -204,7 +204,7 @@ def test_effective_score_prefers_rerank():
 
 
 def test_effective_score_falls_back_to_rrf():
-    from advanced_rag.models import ParentResult
+    from hybrid_rag.models import ParentResult
 
     p = ParentResult(parent_id=1, title="A", kind="section", page_no=None,
                      text="x", source_path="/x.md", score=0.05,

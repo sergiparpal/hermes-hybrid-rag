@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from advanced_rag import parents
-from advanced_rag.models import Parent
-from advanced_rag.parents import (
+from hybrid_rag import parents
+from hybrid_rag.models import Parent
+from hybrid_rag.parents import (
     _enforce_parent_cap,
     extract_md,
     extract_pdf,

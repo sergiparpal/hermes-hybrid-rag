@@ -4,10 +4,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from advanced_rag.engine import RAGEngine, reset_for_tests, set_engine_for_tests
-from advanced_rag.indexing import index_path
-from advanced_rag.storage import Store
-from advanced_rag.tools import (
+from hybrid_rag.engine import RAGEngine, reset_for_tests, set_engine_for_tests
+from hybrid_rag.indexing import index_path
+from hybrid_rag.storage import Store
+from hybrid_rag.tools import (
     tool_rag_drill_down,
     tool_rag_list_sources,
     tool_rag_search,

@@ -2,7 +2,7 @@ import sys
 
 import pytest
 
-from advanced_rag.expansion import expand_query
+from hybrid_rag.expansion import expand_query
 
 
 def test_fallback_when_no_api_key(monkeypatch):

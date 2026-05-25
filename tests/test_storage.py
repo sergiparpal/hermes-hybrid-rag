@@ -1,4 +1,4 @@
-from advanced_rag.storage import Store
+from hybrid_rag.storage import Store
 
 
 def test_init_creates_data_dir_and_schema(tmp_data_dir):

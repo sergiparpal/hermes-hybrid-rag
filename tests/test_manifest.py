@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from advanced_rag import manifest
-from advanced_rag.storage import Store
+from hybrid_rag import manifest
+from hybrid_rag.storage import Store
 
 
 class _Stat:

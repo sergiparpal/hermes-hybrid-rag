@@ -1,6 +1,6 @@
 import json
 
-from advanced_rag.schemas import ALL_SCHEMAS, RAG_DRILL_DOWN, RAG_LIST_SOURCES, RAG_SEARCH
+from hybrid_rag.schemas import ALL_SCHEMAS, RAG_DRILL_DOWN, RAG_LIST_SOURCES, RAG_SEARCH
 
 
 def test_each_schema_has_required_keys():

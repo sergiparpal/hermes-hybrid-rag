@@ -2,9 +2,9 @@ import sys
 
 import pytest
 
-import advanced_rag.rerank as rerank_mod
-from advanced_rag.rerank import rerank
-from advanced_rag.models import ParentResult
+import hybrid_rag.rerank as rerank_mod
+from hybrid_rag.rerank import rerank
+from hybrid_rag.models import ParentResult
 
 
 def _parents():

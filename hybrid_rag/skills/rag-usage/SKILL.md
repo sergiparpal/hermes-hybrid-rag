@@ -5,7 +5,7 @@ description: Choose between ambient context, rag_search, rag_drill_down, and rag
 
 # When to use the RAG plugin
 
-The `advanced-rag` plugin gives you three tools and an ambient context
+The `hybrid-rag` plugin gives you three tools and an ambient context
 injector. Pick the cheapest path that gets the job done.
 
 ## 1. Read the ambient context first

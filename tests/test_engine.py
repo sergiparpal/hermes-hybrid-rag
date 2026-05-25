@@ -1,15 +1,15 @@
 import numpy as np
 import pytest
 
-from advanced_rag.artifacts import ArtifactStore
-from advanced_rag.engine import (
+from hybrid_rag.artifacts import ArtifactStore
+from hybrid_rag.engine import (
     EngineLoadError,
     RAGEngine,
     get_engine,
     reset_for_tests,
     set_engine_for_tests,
 )
-from advanced_rag.storage import Store
+from hybrid_rag.storage import Store
 
 
 def _seed_chunks(store: Store, ids: list[int]) -> None:

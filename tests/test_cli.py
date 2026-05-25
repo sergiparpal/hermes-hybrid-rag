@@ -2,8 +2,8 @@ import argparse
 import json
 from pathlib import Path
 
-from advanced_rag import cli, indexing
-from advanced_rag.storage import Store
+from hybrid_rag import cli, indexing
+from hybrid_rag.storage import Store
 
 FIXTURES = Path(__file__).parent / "fixtures" / "docs"
 
@@ -72,7 +72,7 @@ def test_handle_stats(tmp_data_dir, capsys):
 
 def _seed_artifacts(data_dir: Path):
     """Drop the four files clear is supposed to own into data_dir."""
-    from advanced_rag.config import bm25_path, db_path, npz_path, toggles_path
+    from hybrid_rag.config import bm25_path, db_path, npz_path, toggles_path
 
     for p in (db_path(data_dir), npz_path(data_dir),
               bm25_path(data_dir), toggles_path(data_dir)):
@@ -101,7 +101,7 @@ def test_handle_clear_confirmed_unlinks_owned_files_only(tmp_data_dir, capsys):
     code = cli.handle_rag(args)
     assert code == 0
 
-    from advanced_rag.config import bm25_path, db_path, npz_path, toggles_path
+    from hybrid_rag.config import bm25_path, db_path, npz_path, toggles_path
     for p in (db_path(tmp_data_dir), npz_path(tmp_data_dir),
               bm25_path(tmp_data_dir), toggles_path(tmp_data_dir)):
         assert not p.exists()

@@ -2,14 +2,14 @@ from pathlib import Path
 
 import pytest
 
-from advanced_rag.extractors import (
+from hybrid_rag.extractors import (
     DEFAULT_REGISTRY,
     ExtractorRegistry,
     MarkdownExtractor,
     PdfExtractor,
     TextExtractor,
 )
-from advanced_rag.models import Parent
+from hybrid_rag.models import Parent
 
 
 def test_default_registry_covers_md_txt_pdf():

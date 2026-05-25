@@ -2,9 +2,9 @@ from pathlib import Path
 
 import numpy as np
 
-from advanced_rag.artifacts import ArtifactStore
-from advanced_rag.indexing import index_path
-from advanced_rag.storage import Store
+from hybrid_rag.artifacts import ArtifactStore
+from hybrid_rag.indexing import index_path
+from hybrid_rag.storage import Store
 
 FIXTURES = Path(__file__).parent / "fixtures" / "docs"
 
@@ -53,7 +53,7 @@ def test_walk_skips_symlinks(tmp_data_dir, tmp_path, stub_embedder):
     """Symlinks discovered during a recursive walk must not be followed —
     indexing them would land the symlink target's content (e.g. ~/.ssh/...)
     in the catalog where every later query can surface it."""
-    from advanced_rag.indexing import _walk
+    from hybrid_rag.indexing import _walk
 
     docs = tmp_path / "docs"
     docs.mkdir()
@@ -76,7 +76,7 @@ def test_walk_skips_symlinks(tmp_data_dir, tmp_path, stub_embedder):
 def test_walk_skips_symlinked_directories(tmp_data_dir, tmp_path, stub_embedder):
     """os.walk(followlinks=False) prevents descent into symlinked dirs —
     closes the variant where the attacker symlinks a whole directory."""
-    from advanced_rag.indexing import _walk
+    from hybrid_rag.indexing import _walk
 
     docs = tmp_path / "docs"
     docs.mkdir()
@@ -97,7 +97,7 @@ def test_walk_skips_symlinked_directories(tmp_data_dir, tmp_path, stub_embedder)
 def test_walk_skips_oversized_file(tmp_data_dir, tmp_path, monkeypatch, capsys):
     """Files above MAX_INDEX_FILE_BYTES are skipped with a stderr warning —
     OOM protection: extractors load the whole file into memory."""
-    from advanced_rag import indexing as indexing_mod
+    from hybrid_rag import indexing as indexing_mod
 
     docs = tmp_path / "docs"
     docs.mkdir()
@@ -115,7 +115,7 @@ def test_walk_skips_oversized_file(tmp_data_dir, tmp_path, monkeypatch, capsys):
 def test_walk_honors_explicit_symlink_root(tmp_data_dir, tmp_path):
     """A symlink chosen explicitly by the user (single-file index target) is
     honored — only recursive walks reject symlinks."""
-    from advanced_rag.indexing import _walk
+    from hybrid_rag.indexing import _walk
 
     real = tmp_path / "real.md"
     real.write_text("# T\n\n## S\nbody")
@@ -213,7 +213,7 @@ def test_embed_row_invariant(tmp_data_dir, tmp_path, stub_embedder):
 def test_engine_chunk_ids_match_canonical_order(tmp_data_dir, tmp_path, stub_embedder):
     """After indexing, the engine's `_chunk_ids` (loaded from SQLite) must
     align with the .npz row index order."""
-    from advanced_rag.engine import RAGEngine
+    from hybrid_rag.engine import RAGEngine
     docs = _stage(tmp_path)
     store = Store()
     index_path(docs, store=store, embedder=stub_embedder)
@@ -251,7 +251,7 @@ def test_engine_reloads_on_index_version_change(
     """End-to-end: an engine that loaded against version V1 transparently
     reloads on the next call once the store advances to V2 — without anyone
     calling `engine.reset()`."""
-    from advanced_rag.engine import RAGEngine
+    from hybrid_rag.engine import RAGEngine
 
     docs = _stage(tmp_path)
     store = Store()
@@ -278,7 +278,7 @@ def test_indexing_failure_warning_goes_to_stderr(
     """Per-file failures must not pollute stdout — the CLI emits JSON there."""
     docs = _stage(tmp_path)
     # Force every file to raise during extraction so the failure path runs.
-    import advanced_rag.indexing as indexing_mod
+    import hybrid_rag.indexing as indexing_mod
 
     def boom(_path):
         raise RuntimeError("synthetic extraction error")
@@ -287,5 +287,5 @@ def test_indexing_failure_warning_goes_to_stderr(
     store = Store()
     index_path(docs, store=store, embedder=stub_embedder)
     captured = capsys.readouterr()
-    assert "[advanced-rag] failed to index" in captured.err
-    assert "[advanced-rag] failed to index" not in captured.out
+    assert "[hybrid-rag] failed to index" in captured.err
+    assert "[hybrid-rag] failed to index" not in captured.out

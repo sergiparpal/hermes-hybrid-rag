@@ -1,6 +1,6 @@
 """Shared data classes. Living here (not inside retrieval/storage/parents)
 breaks the fan-in that would otherwise force every consumer through one of
-those modules. Nothing in this file imports any other ``advanced_rag``
+those modules. Nothing in this file imports any other ``hybrid_rag``
 module — keep it that way.
 """
 from __future__ import annotations

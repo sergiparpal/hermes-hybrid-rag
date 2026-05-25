@@ -1,6 +1,6 @@
 import pytest
 
-from advanced_rag.chunking import recursive_split
+from hybrid_rag.chunking import recursive_split
 
 
 def test_invalid_max_size_raises():

@@ -1,6 +1,6 @@
 import numpy as np
 
-from advanced_rag.artifacts import ArtifactStore
+from hybrid_rag.artifacts import ArtifactStore
 
 
 def test_save_and_load_atomic(tmp_data_dir):

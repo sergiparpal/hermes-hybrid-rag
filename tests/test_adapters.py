@@ -3,12 +3,12 @@ from pathlib import Path
 import pytest
 import yaml
 
-import advanced_rag
-from advanced_rag import adapters
+import hybrid_rag
+from hybrid_rag import adapters
 
 
 def test_register_wires_three_tools(fake_ctx):
-    advanced_rag.register(fake_ctx)
+    hybrid_rag.register(fake_ctx)
     names = [t["name"] for t in fake_ctx.tools]
     assert sorted(names) == ["rag_drill_down", "rag_list_sources", "rag_search"]
     for t in fake_ctx.tools:
@@ -18,7 +18,7 @@ def test_register_wires_three_tools(fake_ctx):
 
 
 def test_register_wires_pre_llm_call_hook(fake_ctx):
-    advanced_rag.register(fake_ctx)
+    hybrid_rag.register(fake_ctx)
     events = [h["event"] for h in fake_ctx.hooks]
     assert "pre_llm_call" in events
     fn = next(h["fn"] for h in fake_ctx.hooks if h["event"] == "pre_llm_call")
@@ -26,7 +26,7 @@ def test_register_wires_pre_llm_call_hook(fake_ctx):
 
 
 def test_register_wires_on_session_start_hook(fake_ctx):
-    advanced_rag.register(fake_ctx)
+    hybrid_rag.register(fake_ctx)
     events = [h["event"] for h in fake_ctx.hooks]
     assert "on_session_start" in events
     # exactly two hooks: pre_llm_call and on_session_start
@@ -34,7 +34,7 @@ def test_register_wires_on_session_start_hook(fake_ctx):
 
 
 def test_register_wires_cli_command(fake_ctx):
-    advanced_rag.register(fake_ctx)
+    hybrid_rag.register(fake_ctx)
     assert len(fake_ctx.cli_commands) == 1
     cmd = fake_ctx.cli_commands[0]
     assert cmd["name"] == "rag"
@@ -43,7 +43,7 @@ def test_register_wires_cli_command(fake_ctx):
 
 
 def test_register_wires_slash_command(fake_ctx):
-    advanced_rag.register(fake_ctx)
+    hybrid_rag.register(fake_ctx)
     assert len(fake_ctx.commands) == 1
     cmd = fake_ctx.commands[0]
     assert cmd["name"] == "rag"
@@ -51,7 +51,7 @@ def test_register_wires_slash_command(fake_ctx):
 
 
 def test_register_wires_skill_with_path_object(fake_ctx):
-    advanced_rag.register(fake_ctx)
+    hybrid_rag.register(fake_ctx)
     assert len(fake_ctx.skills) == 1
     s = fake_ctx.skills[0]
     assert s["name"] == "rag-usage"
@@ -114,7 +114,7 @@ def test_session_warm_hook_spawns_background_thread(tmp_data_dir, monkeypatch):
     """make_session_warm_hook should return a callable that spawns a thread
     invoking get_engine()._ensure_loaded — and never blocks or raises."""
     import threading
-    from advanced_rag import engine as engine_mod
+    from hybrid_rag import engine as engine_mod
 
     # Warm-up is one-shot per process; reset for an isolated test.
     adapters.reset_for_tests()
@@ -144,7 +144,7 @@ def test_session_warm_hook_swallows_exceptions(monkeypatch):
     """Engine warming must never raise out — failures fall back to cold-load
     on the first ambient call."""
     import threading
-    from advanced_rag import engine as engine_mod
+    from hybrid_rag import engine as engine_mod
 
     adapters.reset_for_tests()
 
@@ -167,9 +167,9 @@ def test_session_warm_hook_swallows_exceptions(monkeypatch):
 
 
 def test_plugin_yaml_parses_and_has_expected_keys():
-    p = Path(__file__).parent.parent / "advanced_rag" / "plugin.yaml"
+    p = Path(__file__).parent.parent / "hybrid_rag" / "plugin.yaml"
     data = yaml.safe_load(p.read_text())
-    assert data["name"] == "advanced-rag"
+    assert data["name"] == "hybrid-rag"
     assert "version" in data
     tools = data.get("provides_tools", [])
     assert sorted(tools) == ["rag_drill_down", "rag_list_sources", "rag_search"]
@@ -183,7 +183,7 @@ def test_plugin_yaml_does_not_misrepresent_optional_env_as_required():
     is reserved for actual hard dependencies and is what `hermes plugin list`
     surfaces. The optional set lives under our `optional_env` documentation
     key, which Hermes ignores."""
-    p = Path(__file__).parent.parent / "advanced_rag" / "plugin.yaml"
+    p = Path(__file__).parent.parent / "hybrid_rag" / "plugin.yaml"
     data = yaml.safe_load(p.read_text())
     assert not data.get("requires_env"), \
         "requires_env must be empty/absent — the plugin runs with zero env vars"
@@ -197,20 +197,20 @@ def test_plugin_yaml_does_not_misrepresent_optional_env_as_required():
 
 
 def test_requirements_files_are_in_sync():
-    """`advanced_rag/requirements.txt` is intentionally a copy of the repo-root
+    """`hybrid_rag/requirements.txt` is intentionally a copy of the repo-root
     file (so a single rsync of the inner package carries deps to runtime). If
     they drift, the deployment would silently install the wrong set."""
     root = Path(__file__).parent.parent
     a = (root / "requirements.txt").read_text()
-    b = (root / "advanced_rag" / "requirements.txt").read_text()
+    b = (root / "hybrid_rag" / "requirements.txt").read_text()
     assert a == b, (
-        "requirements.txt and advanced_rag/requirements.txt have diverged. "
+        "requirements.txt and hybrid_rag/requirements.txt have diverged. "
         "Update one to match the other (or both, to whatever the new spec is)."
     )
 
 
 def test_skill_md_has_frontmatter():
-    p = Path(__file__).parent.parent / "advanced_rag" / "skills" / "rag-usage" / "SKILL.md"
+    p = Path(__file__).parent.parent / "hybrid_rag" / "skills" / "rag-usage" / "SKILL.md"
     text = p.read_text()
     assert text.startswith("---\n")
     end = text.find("\n---", 4)

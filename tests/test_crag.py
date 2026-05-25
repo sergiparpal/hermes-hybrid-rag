@@ -16,16 +16,16 @@ from pathlib import Path
 
 import pytest
 
-import advanced_rag.crag as crag_mod
-import advanced_rag.hooks as hooks_mod
-import advanced_rag.pipelines as pipelines_mod
-import advanced_rag.state as state_mod
-from advanced_rag import _anthropic, convo
-from advanced_rag.engine import RAGEngine, reset_for_tests, set_engine_for_tests
-from advanced_rag.hooks import ambient_pre_llm_call
-from advanced_rag.indexing import index_path
-from advanced_rag.storage import Store
-from advanced_rag.tools import tool_rag_search
+import hybrid_rag.crag as crag_mod
+import hybrid_rag.hooks as hooks_mod
+import hybrid_rag.pipelines as pipelines_mod
+import hybrid_rag.state as state_mod
+from hybrid_rag import _anthropic, convo
+from hybrid_rag.engine import RAGEngine, reset_for_tests, set_engine_for_tests
+from hybrid_rag.hooks import ambient_pre_llm_call
+from hybrid_rag.indexing import index_path
+from hybrid_rag.storage import Store
+from hybrid_rag.tools import tool_rag_search
 
 FIXTURES = Path(__file__).parent / "fixtures" / "docs"
 

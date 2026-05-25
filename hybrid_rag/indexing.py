@@ -74,7 +74,7 @@ def _accept_file(p: Path, *, allow_symlink: bool = False) -> bool:
             p, st.st_size, MAX_INDEX_FILE_BYTES,
         )
         print(
-            f"[advanced-rag] skipping {p}: size exceeds "
+            f"[hybrid-rag] skipping {p}: size exceeds "
             f"MAX_INDEX_FILE_BYTES ({MAX_INDEX_FILE_BYTES})",
             file=sys.stderr,
         )
@@ -236,7 +236,7 @@ def _apply_inserts(store: Store, paths: list[Path]) -> tuple[int, int, int]:
             # Skip the file but keep going. Warning goes to stderr so the
             # CLI's JSON summary on stdout stays parseable.
             log.warning("failed to index %s: %s", p, e)
-            print(f"[advanced-rag] failed to index {p}: {e}", file=sys.stderr)
+            print(f"[hybrid-rag] failed to index {p}: {e}", file=sys.stderr)
             continue
         files += 1
         parents += pn

@@ -1,4 +1,4 @@
-from advanced_rag.retrieval import rrf_fuse
+from hybrid_rag.retrieval import rrf_fuse
 
 
 def test_rrf_formula_single_ranking():

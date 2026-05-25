@@ -15,15 +15,15 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-import advanced_rag.convo as convo_mod
-import advanced_rag.hooks as hooks_mod
-import advanced_rag.pipelines as pipelines_mod
-import advanced_rag.rerank as rerank_mod
-import advanced_rag.state as state_mod
-from advanced_rag.engine import RAGEngine, reset_for_tests, set_engine_for_tests
-from advanced_rag.hooks import ambient_pre_llm_call
-from advanced_rag.indexing import index_path
-from advanced_rag.storage import Store
+import hybrid_rag.convo as convo_mod
+import hybrid_rag.hooks as hooks_mod
+import hybrid_rag.pipelines as pipelines_mod
+import hybrid_rag.rerank as rerank_mod
+import hybrid_rag.state as state_mod
+from hybrid_rag.engine import RAGEngine, reset_for_tests, set_engine_for_tests
+from hybrid_rag.hooks import ambient_pre_llm_call
+from hybrid_rag.indexing import index_path
+from hybrid_rag.storage import Store
 
 FIXTURES = Path(__file__).parent / "fixtures" / "docs"
 
@@ -140,8 +140,8 @@ def test_ambient_never_calls_cohere(warmed_engine, monkeypatch,
 def test_warm_hook_warms_cross_encoder(monkeypatch):
     """Ambient invariant: on_session_start preloads the cross-encoder so
     the first ambient rerank doesn't pay the cold-load cost."""
-    from advanced_rag import adapters as adapters_mod
-    from advanced_rag.adapters import make_session_warm_hook
+    from hybrid_rag import adapters as adapters_mod
+    from hybrid_rag.adapters import make_session_warm_hook
 
     adapters_mod.reset_for_tests()
 
@@ -152,7 +152,7 @@ def test_warm_hook_warms_cross_encoder(monkeypatch):
 
     monkeypatch.setattr(rerank_mod, "warm_local_cross_encoder", fake_warm)
     # Also stub engine load so the thread doesn't actually load anything.
-    from advanced_rag import engine as eng_mod
+    from hybrid_rag import engine as eng_mod
 
     class _DummyEngine:
         def _ensure_loaded(self):

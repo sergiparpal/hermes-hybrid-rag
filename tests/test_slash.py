@@ -1,7 +1,7 @@
 import json
 
-import advanced_rag.state as state_mod
-from advanced_rag.slash import slash_rag
+import hybrid_rag.state as state_mod
+from hybrid_rag.slash import slash_rag
 
 
 def setup_function(_):

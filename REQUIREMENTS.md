@@ -1,6 +1,6 @@
-# REQUIREMENTS.md — `advanced-rag` Hermes plugin
+# REQUIREMENTS.md — `hybrid-rag` Hermes plugin
 
-This document is the authoritative specification for the `advanced-rag` plugin and a self-contained reference for what any Hermes Agent plugin must provide.
+This document is the authoritative specification for the `hybrid-rag` plugin and a self-contained reference for what any Hermes Agent plugin must provide.
 
 Companion docs:
 
@@ -54,7 +54,7 @@ Either path leads to the same contract: Hermes calls `register(ctx)` once per pr
 
 ### 2.2 `plugin.yaml` manifest
 
-Required key: `name` (must match the dirname for filesystem discovery, e.g., `advanced-rag`).
+Required key: `name` (must match the dirname for filesystem discovery, e.g., `hybrid-rag`).
 
 Recommended keys: `version`, `description`, `author`, `kind` (defaults to `standalone`; alternatives: `backend`, `exclusive`, `platform`).
 
@@ -98,7 +98,7 @@ The two used by this plugin:
 **`ctx.register_skill(name, path, description="")`** — registers a markdown skill file teaching the agent how/when to use the plugin.
 
 - `path` must be a `pathlib.Path`, **not** a string. The implementation calls `path.exists()`; passing `str` raises `AttributeError`.
-- Skill name constraint: `[a-zA-Z0-9_-]+`, no `:`. Hermes prefixes the plugin name to form a qualified id like `advanced-rag:rag-usage`.
+- Skill name constraint: `[a-zA-Z0-9_-]+`, no `:`. Hermes prefixes the plugin name to form a qualified id like `hybrid-rag:rag-usage`.
 - The `SKILL.md` file's frontmatter keys actually consumed by Hermes: `name` (defaults to dir name), `description`, `platforms` (optional list, e.g., `[linux, macos]`), `metadata` (optional nested dict).
 
 ### 2.4 Pure core / thin adapter separation (architectural rule)
@@ -117,7 +117,7 @@ Plugins must not write to disk at import time, at `register(ctx)` time, or in an
 
 ---
 
-## 3. `advanced-rag` plugin requirements
+## 3. `hybrid-rag` plugin requirements
 
 ### 3.1 Architecture
 
@@ -145,8 +145,8 @@ Module boundaries:
 ### 3.2 Project layout (deployable artifact)
 
 ```
-/home/sergi/Documentos/advanced-rag/
-├── advanced_rag/                       # deployable plugin payload (rsync target)
+/home/sergi/Documentos/hybrid-rag/
+├── hybrid_rag/                       # deployable plugin payload (rsync target)
 │   ├── plugin.yaml                     # Hermes manifest
 │   ├── requirements.txt                # COPY of repo-root file
 │   ├── __init__.py                     # register(ctx)
@@ -175,7 +175,7 @@ Repo-root files: `pyproject.toml`, `requirements.txt`, `README.md`, `REQUIREMENT
 
 The `data/` directory is gitignored; runtime state never appears in the repo.
 
-`advanced_rag/requirements.txt` is a **deliberate copy** of the root file so a single `rsync -av advanced_rag/ ...` carries deps to the runtime machine. If you change one, change the other.
+`hybrid_rag/requirements.txt` is a **deliberate copy** of the root file so a single `rsync -av hybrid_rag/ ...` carries deps to the runtime machine. If you change one, change the other.
 
 ### 3.3 Tools
 
@@ -341,7 +341,7 @@ Per-session toggle is **not** supported because the slash handler signature has 
 
 ### 3.7 Skill (`rag-usage`)
 
-A `SKILL.md` file under `advanced_rag/skills/rag-usage/` with frontmatter:
+A `SKILL.md` file under `hybrid_rag/skills/rag-usage/` with frontmatter:
 
 ```yaml
 ---
@@ -517,7 +517,7 @@ Tests cover each fallback path with mocked modules — that coverage must be mai
 
 ### 3.14 Tunable parameters
 
-All defaults live in `advanced_rag/config.py`:
+All defaults live in `hybrid_rag/config.py`:
 
 | Constant | Default | Meaning |
 |---|---|---|
@@ -539,8 +539,8 @@ All defaults live in `advanced_rag/config.py`:
 
 ### 4.1 Dev machine ≠ runtime machine
 
-- Canonical project root: `/home/sergi/Documentos/advanced-rag/`.
-- Hermes runs elsewhere; `~/.hermes/plugins/advanced-rag/` does not exist on the dev machine and must not be created here.
+- Canonical project root: `/home/sergi/Documentos/hybrid-rag/`.
+- Hermes runs elsewhere; `~/.hermes/plugins/hybrid-rag/` does not exist on the dev machine and must not be created here.
 - Light deps only on dev: `numpy`, `rank_bm25`, `pyyaml`, `pytest`. Do **not** install `sentence-transformers`, `anthropic`, `cohere`, `pypdf` on dev — tests stub them via `sys.modules` patching (`tests/conftest.py` `mock_anthropic`, `mock_cohere`, `mock_cross_encoder`, `StubEmbedder`).
 - No real Hermes integration test on dev. The adapter layer is verified manually post-deploy. Dev verifies pure logic only.
 
@@ -550,7 +550,7 @@ All defaults live in `advanced_rag/config.py`:
 
 1. Explicit `Store(data_dir=...)` constructor argument.
 2. `HERMES_RAG_DATA_DIR` environment variable.
-3. Default: `~/.hermes/plugins/advanced-rag/data/`.
+3. Default: `~/.hermes/plugins/hybrid-rag/data/`.
 
 Tests must always route through `tmp_data_dir` (sets `HERMES_RAG_DATA_DIR=tmp_path`) or pass `data_dir=tmp_path` explicitly. Production paths use the default. **This rule is the only thing keeping tests from polluting a real index** — keep it strict. Do not add a fourth resolution path.
 
@@ -583,7 +583,7 @@ Ambient context is capped at 1500 tokens per call, target ~1200 to leave room fo
 
 ## 5. Dependencies
 
-`requirements.txt` (repo root, also copied verbatim into `advanced_rag/`):
+`requirements.txt` (repo root, also copied verbatim into `hybrid_rag/`):
 
 ```
 # Required at runtime (installed in the Hermes Python env)
@@ -605,7 +605,7 @@ pytest>=8.0
 
 ```toml
 [project.entry-points."hermes_agent.plugins"]
-advanced-rag = "advanced_rag"
+hybrid-rag = "hybrid_rag"
 ```
 
 Dev install: `pip install numpy rank_bm25 pyyaml pytest`. Runtime install: `cd <plugin-dir> && python -m pip install -r requirements.txt` (full set).
@@ -618,7 +618,7 @@ First explicit `rag_search` triggers the MiniLM embedder download (~80 MB) and, 
 
 `tests/conftest.py` provides:
 
-- `sys.path` injection so `import advanced_rag.<module>` works without installation.
+- `sys.path` injection so `import hybrid_rag.<module>` works without installation.
 - `tmp_data_dir` fixture — sets `HERMES_RAG_DATA_DIR=tmp_path` and yields the path.
 - `stub_embedder` fixture — deterministic vectors (e.g., hash-based, then L2-normalized).
 - `fake_ctx` fixture — records `register_*` calls into a dict.
@@ -648,15 +648,15 @@ Does **not** run on dev:
 ### Dev machine
 
 - [ ] `pytest -q` reports ≥30 tests, all passing.
-- [ ] `python -c "from advanced_rag import register"` exits 0.
-- [ ] `python -c "import yaml; print(yaml.safe_load(open('advanced_rag/plugin.yaml'))['name'])"` prints `advanced-rag`.
-- [ ] `find advanced_rag -name __pycache__ -prune -o -type f -print` lists exactly the files in §3.2.
+- [ ] `python -c "from hybrid_rag import register"` exits 0.
+- [ ] `python -c "import yaml; print(yaml.safe_load(open('hybrid_rag/plugin.yaml'))['name'])"` prints `hybrid-rag`.
+- [ ] `find hybrid_rag -name __pycache__ -prune -o -type f -print` lists exactly the files in §3.2.
 - [ ] `git status` clean; `data/` not tracked.
 - [ ] `HERMES_API.md` exists with confirmed signatures.
 
 ### Runtime machine (post-deploy)
 
-- [ ] `hermes plugin list` shows `advanced-rag` enabled.
+- [ ] `hermes plugin list` shows `hybrid-rag` enabled.
 - [ ] `hermes rag index ./test-corpus` (with one md file) reports 1 file, 1 parent, ≥1 chunk.
 - [ ] `/rag stats` returns counts.
 - [ ] User message containing an indexed term triggers ambient context injection (verifiable in Hermes logs).
@@ -669,13 +669,13 @@ Does **not** run on dev:
 
 ## 8. Critical files (touch points if anything goes wrong)
 
-- `advanced_rag/__init__.py` — only Hermes-coupled module besides `adapters.py`. **First place to edit if API drifts.**
-- `advanced_rag/adapters.py` — closures isolate inferred shapes. Second touch point.
-- `advanced_rag/engine.py` — singleton lifecycle; lazy load + `reset()` correctness gates ambient hook latency.
-- `advanced_rag/storage.py` — atomic `.npz`/`.pkl` writes; `embed_row` invariant.
-- `advanced_rag/retrieval.py` — RRF formula, MAX-rollup parent score, identical tokenizer at index/query time.
-- `advanced_rag/hooks.py` — must never raise; threshold gate; token cap.
-- `advanced_rag/config.py` — `HERMES_RAG_DATA_DIR` precedence; the only thing keeping tests from polluting the user's real index.
+- `hybrid_rag/__init__.py` — only Hermes-coupled module besides `adapters.py`. **First place to edit if API drifts.**
+- `hybrid_rag/adapters.py` — closures isolate inferred shapes. Second touch point.
+- `hybrid_rag/engine.py` — singleton lifecycle; lazy load + `reset()` correctness gates ambient hook latency.
+- `hybrid_rag/storage.py` — atomic `.npz`/`.pkl` writes; `embed_row` invariant.
+- `hybrid_rag/retrieval.py` — RRF formula, MAX-rollup parent score, identical tokenizer at index/query time.
+- `hybrid_rag/hooks.py` — must never raise; threshold gate; token cap.
+- `hybrid_rag/config.py` — `HERMES_RAG_DATA_DIR` precedence; the only thing keeping tests from polluting the user's real index.
 
 ---
 

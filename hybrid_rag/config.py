@@ -12,14 +12,14 @@ Feature-specific defaults live with their consumers:
 
 The single data-dir rule: explicit ``Store(data_dir=...)`` arg
 > ``HERMES_RAG_DATA_DIR`` env var > default
-``~/.hermes/plugins/advanced-rag/data/``.
+``~/.hermes/plugins/hybrid-rag/data/``.
 """
 from __future__ import annotations
 
 import os
 from pathlib import Path
 
-DEFAULT_DATA_DIR = Path.home() / ".hermes" / "plugins" / "advanced-rag" / "data"
+DEFAULT_DATA_DIR = Path.home() / ".hermes" / "plugins" / "hybrid-rag" / "data"
 
 
 def env_flag(name: str, default: bool = False) -> bool:

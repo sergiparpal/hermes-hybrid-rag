@@ -11,11 +11,11 @@ import types
 import numpy as np
 import pytest
 
-from advanced_rag import embeddings as embeddings_mod
-from advanced_rag.embeddings import Embedder
-from advanced_rag.engine import EngineLoadError, RAGEngine
-from advanced_rag.indexing import index_path
-from advanced_rag.storage import Store
+from hybrid_rag import embeddings as embeddings_mod
+from hybrid_rag.embeddings import Embedder
+from hybrid_rag.engine import EngineLoadError, RAGEngine
+from hybrid_rag.indexing import index_path
+from hybrid_rag.storage import Store
 
 
 # --- env-driven model selection ---

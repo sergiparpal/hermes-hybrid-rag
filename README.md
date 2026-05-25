@@ -218,7 +218,7 @@ The dev install **does not** pull `sentence-transformers`, `pypdf`,
 ### Runtime machine (full deps, inside Hermes' Python env)
 
 ```
-cd ~/.hermes/plugins/advanced-rag && python -m pip install -r requirements.txt
+cd ~/.hermes/plugins/hybrid-rag && python -m pip install -r requirements.txt
 ```
 
 On a fresh machine the first session warm-up (and any subsequent cold
@@ -239,10 +239,10 @@ Three supported flows.
 ```
 rsync -av --delete \
   --exclude='__pycache__' --exclude='*.pyc' \
-  /home/sergi/Documentos/advanced-rag/advanced_rag/ \
-  user@runtime:~/.hermes/plugins/advanced-rag/
+  /home/sergi/Documentos/hybrid-rag/hybrid_rag/ \
+  user@runtime:~/.hermes/plugins/hybrid-rag/
 
-ssh user@runtime 'cd ~/.hermes/plugins/advanced-rag && python -m pip install -r requirements.txt'
+ssh user@runtime 'cd ~/.hermes/plugins/hybrid-rag && python -m pip install -r requirements.txt'
 ```
 
 The trailing slash on the source flattens contents (`plugin.yaml`, `*.py`,
@@ -252,9 +252,9 @@ expects.
 ### 2. git clone + symlink
 
 ```
-git clone <repo-url> ~/.hermes/plugins/advanced-rag-source
-ln -s ~/.hermes/plugins/advanced-rag-source/advanced_rag ~/.hermes/plugins/advanced-rag
-cd ~/.hermes/plugins/advanced-rag && python -m pip install -r requirements.txt
+git clone <repo-url> ~/.hermes/plugins/hybrid-rag-source
+ln -s ~/.hermes/plugins/hybrid-rag-source/hybrid_rag ~/.hermes/plugins/hybrid-rag
+cd ~/.hermes/plugins/hybrid-rag && python -m pip install -r requirements.txt
 ```
 
 ### 3. pip entry-point install
@@ -263,7 +263,7 @@ cd ~/.hermes/plugins/advanced-rag && python -m pip install -r requirements.txt
 
 ```
 [project.entry-points."hermes_agent.plugins"]
-advanced-rag = "advanced_rag"
+hybrid-rag = "hybrid_rag"
 ```
 
 ```
@@ -279,7 +279,7 @@ unset.
 | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `COHERE_API_KEY`                  | Enables Cohere reranker (`rerank-english-v3.0`) on the **explicit** path. Falls back to a local cross-encoder (~80 MB on first use) when unset. The ambient path never calls Cohere. Get one at <https://dashboard.cohere.com/api-keys>.                 |
 | `ANTHROPIC_API_KEY`               | Enables LLM features that depend on Anthropic: query expansion, contextual retrieval (Phase 2), CRAG-lite (Phase 4). Without it, each feature silently degrades. Get one at <https://console.anthropic.com/>.                                            |
-| `HERMES_RAG_DATA_DIR`             | Override the data directory (defaults to `~/.hermes/plugins/advanced-rag/data`). Useful for tests and isolated runs.                                                                                                                                     |
+| `HERMES_RAG_DATA_DIR`             | Override the data directory (defaults to `~/.hermes/plugins/hybrid-rag/data`). Useful for tests and isolated runs.                                                                                                                                     |
 | `HERMES_RAG_EMBED_MODEL`          | Override the sentence-transformers model id. Defaults to `BAAI/bge-m3` (multilingual, 1024-d). Any model id the SDK can load works (e.g. `sentence-transformers/all-MiniLM-L6-v2`). **Switching models requires `hermes rag index --force`** — the dim won't match the on-disk `.npz` otherwise; the engine refuses to load with a clear error pointing at `--force`. |
 | `HERMES_RAG_EMBED_DIM`            | Manually pin the embedding dimension. Almost never needed: the dim is auto-detected on first model load (for unknown ids) or read from a built-in table (for known ones).                                                                               |
 | `HERMES_RAG_CONTEXTUAL`           | Set to `1` to enable Anthropic-style **Contextual Retrieval** (Phase 2). At index time, each chunk gets a 50–100-token prefix locating it in its parent; both BM25 and the dense index store `prefix + chunk`. Costs Anthropic tokens per indexed chunk (prompt caching keeps it cheap). Without it, behavior matches v0.1. |
@@ -389,8 +389,8 @@ doesn't abort the whole run.
 
 ## Repository layout
 
-The Hermes-coupled surface is exactly two files: `advanced_rag/__init__.py`
-(`register(ctx)`) and `advanced_rag/adapters.py` (closures that match
+The Hermes-coupled surface is exactly two files: `hybrid_rag/__init__.py`
+(`register(ctx)`) and `hybrid_rag/adapters.py` (closures that match
 Hermes's calling shape). Everything else is pure and unit-tested.
 
 Inside the package, modules group into discrete layers — each with one

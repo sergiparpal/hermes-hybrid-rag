@@ -151,7 +151,7 @@ The implementation calls `path.exists()`, which fails on a string with
 `AttributeError`. Always pass `Path(__file__).parent / "skills" / "rag-usage" / "SKILL.md"`.
 
 Skill name constraints: `[a-zA-Z0-9_-]+`, no `:`. Hermes auto-prefixes the
-plugin name to make a qualified id like `advanced-rag:rag-usage`.
+plugin name to make a qualified id like `hybrid-rag:rag-usage`.
 
 `SKILL.md` frontmatter keys actually read by Hermes (`agent/skill_utils.py`):
 
@@ -167,7 +167,7 @@ Source: `hermes_cli/plugins.py:892` (the parser).
 Keys actually parsed:
 
 ```yaml
-name: advanced-rag           # required
+name: hybrid-rag           # required
 version: "0.1.0"
 description: "..."
 author: "Sergi Parpal"
