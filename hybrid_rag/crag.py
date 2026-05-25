@@ -21,26 +21,6 @@ from .models import ParentResult
 
 log = logging.getLogger(__name__)
 
-_JUDGE_PROMPT = (
-    "You are evaluating whether retrieved document excerpts are sufficient "
-    "to answer a user's query.\n\n"
-    "Query: {q}\n\n"
-    "Retrieved excerpts:\n{excerpts}\n\n"
-    "Respond with a single JSON object (no surrounding text, no code "
-    "fences):\n"
-    '{{"sufficient": true | false, "reason": "<one sentence>"}}'
-)
-
-_REFORMULATE_PROMPT = (
-    "You are rewriting a search query that did not find sufficient evidence "
-    "in a document corpus.\n\n"
-    "Original query: {q}\n\n"
-    "Brief reason the first retrieval was insufficient: {reason}\n\n"
-    "Rewrite the query to be more likely to retrieve the right documents. "
-    "Keep it under 25 words. Output ONLY the rewritten query — no "
-    "explanation, no quotes."
-)
-
 _JUDGE_AND_REFORMULATE_PROMPT = (
     "You are evaluating whether retrieved document excerpts are sufficient "
     "to answer a user's query, and rewriting the query if they are not.\n\n"
@@ -78,41 +58,6 @@ def _excerpt_block(parents: list[ParentResult], max_chars: int = 500) -> str:
     return "\n\n".join(pieces)
 
 
-def judge_retrieval(
-    query: str,
-    parents: list[ParentResult],
-    *,
-    client=None,
-    model: str = ANTHROPIC_MODEL,
-) -> dict:
-    """Returns `{"sufficient": bool, "reason": str}`.
-
-    On any failure path (no API key, no SDK, network error, malformed
-    response) returns `{"sufficient": True, "reason": "skip"}` so the caller
-    treats CRAG as a no-op rather than triggering a useless retry.
-    """
-    cli = client if client is not None else _anthropic.get_client()
-    if cli is None:
-        return {"sufficient": True, "reason": "anthropic unavailable"}
-
-    excerpts = _excerpt_block(parents)
-    try:
-        msg = cli.messages.create(
-            model=model,
-            max_tokens=256,
-            messages=[{"role": "user",
-                       "content": _JUDGE_PROMPT.format(q=query, excerpts=excerpts)}],
-        )
-        payload = json.loads(_anthropic.strip_json_fences(_anthropic.extract_text(msg)))
-        return {
-            "sufficient": bool(payload.get("sufficient", True)),
-            "reason": str(payload.get("reason", "")),
-        }
-    except Exception as e:
-        log.warning("CRAG judge failed: %s", e)
-        return {"sufficient": True, "reason": f"judge failed: {e!r}"}
-
-
 def _clean_rewritten_query(text: str) -> str | None:
     """Trim a model's rewritten-query output. Returns None for empty,
     overlong, or otherwise unusable values — the caller treats that as
@@ -141,12 +86,10 @@ def judge_and_reformulate(
 
     Returns ``{"sufficient": bool, "reason": str, "rewritten_query": str|None}``.
 
-    Trade-off vs. the two-call ``judge_retrieval`` + ``reformulate_query``
-    cascade: one HTTP round-trip instead of two — usually ~500 ms saved on
-    the CRAG-enabled path. The downside is a slightly longer prompt that
-    always asks for both shapes, even when the judge would say sufficient.
-    Net savings hold because the model decides early and only emits the
-    rewrite when needed.
+    Replaces an earlier two-call judge → reformulate cascade — saves ~500 ms
+    on the CRAG-enabled path at the cost of a slightly longer prompt that
+    always asks for both shapes. The model decides early and only emits the
+    rewrite when needed, so the net saving holds.
 
     On any failure (no API key, no SDK, network error, malformed response)
     returns ``{"sufficient": True, "reason": "<details>",
@@ -179,32 +122,3 @@ def judge_and_reformulate(
         log.warning("CRAG judge_and_reformulate failed: %s", e)
         return {"sufficient": True, "reason": f"call failed: {e!r}",
                 "rewritten_query": None}
-
-
-def reformulate_query(
-    query: str,
-    parents: list[ParentResult],
-    judge_reason: str,
-    *,
-    client=None,
-    model: str = ANTHROPIC_MODEL,
-) -> str | None:
-    """Returns the rewritten query, or None on any failure. None tells the
-    caller to fall back to the original query (no retry)."""
-    cli = client if client is not None else _anthropic.get_client()
-    if cli is None:
-        return None
-
-    try:
-        msg = cli.messages.create(
-            model=model,
-            max_tokens=128,
-            messages=[{"role": "user",
-                       "content": _REFORMULATE_PROMPT.format(
-                           q=query,
-                           reason=judge_reason or "(no reason given)")}],
-        )
-        return _clean_rewritten_query(_anthropic.extract_text(msg).strip())
-    except Exception as e:
-        log.warning("CRAG reformulate failed: %s", e)
-        return None

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -34,11 +35,22 @@ def bm25_state_path(data_dir: Path | None = None) -> Path:
 
 def _atomic_write_bytes(target: Path, payload_writer) -> None:
     """Common atomic-replace wrapper. ``payload_writer(file_handle)`` does
-    the actual write into the ``.tmp`` file; we handle the rename/cleanup."""
+    the actual write into the temp file; we handle the rename/cleanup.
+
+    ``tempfile.mkstemp`` gives each writer a unique path (``<name>.<rand>``)
+    on the same filesystem as ``target`` — so two writers to the same
+    target can't clobber each other's tempfiles before the rename. Today
+    the only producer of these artifacts is the indexing CLI (single
+    process), but we don't want the safety of the atomic rename to
+    silently depend on that.
+    """
     target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(target.suffix + ".tmp")
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=target.name + ".", suffix=".tmp", dir=str(target.parent),
+    )
+    tmp = Path(tmp_name)
     try:
-        with open(tmp, "wb") as fh:
+        with os.fdopen(fd, "wb") as fh:
             payload_writer(fh)
         os.replace(tmp, target)
     finally:

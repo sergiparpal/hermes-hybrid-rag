@@ -5,31 +5,33 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
+import threading
 import time
 from pathlib import Path
 
 from .config import toggles_path
 
 _DEFAULT_KEY = "_default"
-# Module-level cache. Deliberately unsynchronized: races between concurrent
-# _load/_store can leave a stale dict in `_CACHE`, but the worst case is
-# exactly one wrong toggle read within the 1-second TTL. `is_ambient_enabled`
-# fails open (errors → True), so a torn read at most disables/enables ambient
-# context for a single LLM turn — never raises, never corrupts the file.
-# Adding a lock here would defeat the purpose of the cache (every read would
-# serialize). Keep this contract in mind before refactoring.
+# Module-level cache. The three globals are updated together inside
+# ``_CACHE_LOCK`` so a reader never sees half-applied state (e.g. a fresh
+# ``_CACHE_TS`` paired with a stale ``_CACHE`` from a different path).
+# ``is_ambient_enabled`` still fails open on any exception so an unusable
+# toggles file never blocks an LLM turn.
 _CACHE: dict | None = None
 _CACHE_TS: float = 0.0
 _CACHE_PATH: Path | None = None
 _CACHE_TTL = 1.0  # seconds
+_CACHE_LOCK = threading.Lock()
 
 
 def _load(path: Path) -> dict:
     global _CACHE, _CACHE_TS, _CACHE_PATH
     now = time.time()
-    if (_CACHE is not None and _CACHE_PATH == path
-            and (now - _CACHE_TS) < _CACHE_TTL):
-        return _CACHE
+    with _CACHE_LOCK:
+        if (_CACHE is not None and _CACHE_PATH == path
+                and (now - _CACHE_TS) < _CACHE_TTL):
+            return _CACHE
     if not path.exists():
         data = {_DEFAULT_KEY: True}
     else:
@@ -40,18 +42,26 @@ def _load(path: Path) -> dict:
         except Exception:
             # corrupted file: fail open
             data = {_DEFAULT_KEY: True}
-    _CACHE = data
-    _CACHE_TS = now
-    _CACHE_PATH = path
-    return data
+    with _CACHE_LOCK:
+        _CACHE = data
+        _CACHE_TS = now
+        _CACHE_PATH = path
+        return data
 
 
 def _store(path: Path, data: dict) -> None:
     global _CACHE, _CACHE_TS, _CACHE_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
+    # mkstemp gives each writer a unique tmp filename on the same fs as
+    # the target — so concurrent slash commands can't clobber each other's
+    # tempfile before the rename.
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=path.name + ".", suffix=".tmp", dir=str(path.parent),
+    )
+    tmp = Path(tmp_name)
     try:
-        tmp.write_text(json.dumps(data))
+        with os.fdopen(fd, "w") as fh:
+            fh.write(json.dumps(data))
         os.replace(tmp, path)
     finally:
         if tmp.exists():
@@ -59,9 +69,10 @@ def _store(path: Path, data: dict) -> None:
                 tmp.unlink()
             except OSError:
                 pass
-    _CACHE = data
-    _CACHE_TS = time.time()
-    _CACHE_PATH = path
+    with _CACHE_LOCK:
+        _CACHE = data
+        _CACHE_TS = time.time()
+        _CACHE_PATH = path
 
 
 def is_ambient_enabled(session_id: str | None = None) -> bool:
@@ -84,6 +95,7 @@ def set_ambient(on: bool, session_id: str | None = None) -> None:
 
 def reset_for_tests() -> None:
     global _CACHE, _CACHE_TS, _CACHE_PATH
-    _CACHE = None
-    _CACHE_TS = 0.0
-    _CACHE_PATH = None
+    with _CACHE_LOCK:
+        _CACHE = None
+        _CACHE_TS = 0.0
+        _CACHE_PATH = None

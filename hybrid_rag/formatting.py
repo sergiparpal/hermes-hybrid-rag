@@ -52,11 +52,16 @@ def _build_block(parent: ParentResult) -> str:
 def _truncate_block(block: str, remaining_chars: int) -> str | None:
     """Truncate a full block to fit in ``remaining_chars``, preserving the
     opening tag and the closing tag. Returns None if the available space is
-    too small to be worth emitting a stub."""
+    too small to be worth emitting a stub — including the degenerate case
+    where the opening tag (source path + title) alone would already exceed
+    the budget. Without that guard, ``body[:negative]`` would silently slice
+    from the tail and emit an oversized block."""
     if remaining_chars <= _MIN_TRUNCATED_BODY_CHARS:
         return None
     head, body = block.split("\n", 1)
     body_budget = remaining_chars - len(head) - _TRUNCATION_OVERHEAD_CHARS
+    if body_budget < _MIN_TRUNCATED_BODY_CHARS:
+        return None
     truncated_body = body[:body_budget].rstrip() + "…"
     return head + "\n" + truncated_body + "\n</retrieved_document>\n"
 

@@ -126,11 +126,18 @@ class RAGEngine:
 
     def reset(self) -> None:
         with self._lock:
+            # Drop ``_loaded`` FIRST so any fast-path reader that races us
+            # without the lock sees "not loaded" before the underlying
+            # arrays are torn down. The fast path in ``_ensure_loaded``
+            # checks ``self._loaded`` outside the lock; clearing arrays
+            # first would briefly expose ``_loaded=True`` paired with
+            # ``_embeddings=None`` and crash retrieval with a NoneType
+            # error instead of cleanly falling through to the slow path.
+            self._loaded = False
+            self._loaded_version = None
             self._bm25 = None
             self._embeddings = None
             self._chunk_ids = []
-            self._loaded = False
-            self._loaded_version = None
             # Invalidate the version cache too so the next call re-reads
             # the meta key fresh — otherwise a test that calls `reset()`
             # then writes a new version within the same TTL window would

@@ -38,8 +38,12 @@ def expand_query(q: str) -> list[str]:
       - Any exception raised by the SDK call
       - Response missing the expected JSON structure
     """
+    # Whitespace-only and empty queries both collapse to "no expansion" —
+    # returning ``[q]`` (a whitespace string) would waste a hybrid_search
+    # variant on noise the moment a future caller skipped the tool layer's
+    # validation. Production callers already reject empty queries upstream.
     if not q or not q.strip():
-        return [q] if q else []
+        return []
     client = _anthropic.get_client()
     if client is None:
         return [q]

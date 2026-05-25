@@ -103,49 +103,38 @@ def test_crag_toggle_via_env(monkeypatch):
 
 # --- isolated judge/reformulate behavior ---
 
-def test_judge_returns_sufficient_when_no_api_key(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    out = crag_mod.judge_retrieval("q", [])
-    assert out["sufficient"] is True
-
-
-def test_judge_returns_sufficient_when_sdk_missing(monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
-    monkeypatch.setitem(sys.modules, "anthropic", None)
-    _anthropic.reset_for_tests()
-    out = crag_mod.judge_retrieval("q", [])
-    assert out["sufficient"] is True
-
-
-def test_reformulate_returns_none_when_no_api_key(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    assert crag_mod.reformulate_query("q", [], "x") is None
-
-
-def test_reformulate_normalizes_whitespace(monkeypatch):
+def test_judge_and_reformulate_normalizes_whitespace(monkeypatch):
     """Multi-line LLM output collapses to a single line of tokens — keeps the
     rewritten query honest before it's fed back to BM25 / dense retrieval."""
     _install_scripted_anthropic(monkeypatch, responses=[
-        "\n  rewritten\tquery\n  with\nlines\n",
+        '{"sufficient": false, "reason": "r", '
+        '"rewritten_query": "\\n  rewritten\\tquery\\n  with\\nlines\\n"}',
     ])
-    out = crag_mod.reformulate_query("orig", [], "reason")
-    assert out == "rewritten query with lines"
+    out = crag_mod.judge_and_reformulate("orig", [])
+    assert out["rewritten_query"] == "rewritten query with lines"
 
 
-def test_reformulate_rejects_pathological_length(monkeypatch):
+def test_judge_and_reformulate_rejects_pathological_length(monkeypatch):
     """A model that returns a wall of text instead of a query is rejected —
     defense-in-depth bound on what we'll feed back into retrieval."""
-    _install_scripted_anthropic(monkeypatch, responses=["word " * 200])
-    assert crag_mod.reformulate_query("orig", [], "reason") is None
-
-
-def test_judge_parses_fenced_json(monkeypatch):
+    long_q = "word " * 200
     _install_scripted_anthropic(monkeypatch, responses=[
-        '```json\n{"sufficient": false, "reason": "missing X"}\n```'
+        '{"sufficient": false, "reason": "r", '
+        f'"rewritten_query": "{long_q.strip()}"}}',
     ])
-    out = crag_mod.judge_retrieval("q", [])
+    out = crag_mod.judge_and_reformulate("orig", [])
+    assert out["rewritten_query"] is None
+
+
+def test_judge_and_reformulate_parses_fenced_json(monkeypatch):
+    _install_scripted_anthropic(monkeypatch, responses=[
+        '```json\n{"sufficient": false, "reason": "missing X", '
+        '"rewritten_query": "better q"}\n```'
+    ])
+    out = crag_mod.judge_and_reformulate("q", [])
     assert out["sufficient"] is False
     assert "missing X" in out["reason"]
+    assert out["rewritten_query"] == "better q"
 
 
 def test_judge_and_reformulate_sufficient_path(monkeypatch):
@@ -181,7 +170,7 @@ def test_judge_and_reformulate_no_api_key_is_noop(monkeypatch):
     assert out["rewritten_query"] is None
 
 
-def test_judge_swallows_sdk_error(monkeypatch):
+def test_judge_and_reformulate_swallows_sdk_error(monkeypatch):
     mod = types.ModuleType("anthropic")
 
     class _Messages:
@@ -196,8 +185,10 @@ def test_judge_swallows_sdk_error(monkeypatch):
     monkeypatch.setitem(sys.modules, "anthropic", mod)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
     _anthropic.reset_for_tests()
-    out = crag_mod.judge_retrieval("q", [])
+    out = crag_mod.judge_and_reformulate("q", [])
+    # Fail-open: caller treats this as no retry.
     assert out["sufficient"] is True
+    assert out["rewritten_query"] is None
 
 
 # --- integration: tool_rag_search ---
@@ -286,32 +277,17 @@ def test_crag_no_anthropic_key_skips_silently(warmed_engine, monkeypatch):
 def test_ambient_path_never_invokes_crag(warmed_engine, monkeypatch,
                                          mock_cross_encoder):
     """HERMES_RAG_CRAG=1 must not change ambient behavior. The ambient hook
-    must not call judge_retrieval / reformulate_query."""
+    must not call ``judge_and_reformulate``."""
     monkeypatch.setenv("HERMES_RAG_CRAG", "1")
     monkeypatch.setattr(pipelines_mod, "AMBIENT_SCORE_THRESHOLD", 0.0)
 
-    judge_calls = {"n": 0}
-    reformulate_calls = {"n": 0}
     merged_calls = {"n": 0}
-
-    real_judge = crag_mod.judge_retrieval
-    real_reformulate = crag_mod.reformulate_query
     real_merged = crag_mod.judge_and_reformulate
-
-    def spy_judge(*a, **kw):
-        judge_calls["n"] += 1
-        return real_judge(*a, **kw)
-
-    def spy_reformulate(*a, **kw):
-        reformulate_calls["n"] += 1
-        return real_reformulate(*a, **kw)
 
     def spy_merged(*a, **kw):
         merged_calls["n"] += 1
         return real_merged(*a, **kw)
 
-    monkeypatch.setattr(crag_mod, "judge_retrieval", spy_judge)
-    monkeypatch.setattr(crag_mod, "reformulate_query", spy_reformulate)
     monkeypatch.setattr(crag_mod, "judge_and_reformulate", spy_merged)
 
     mock_cross_encoder._scores = [5.0] * 10
@@ -320,6 +296,4 @@ def test_ambient_path_never_invokes_crag(warmed_engine, monkeypatch,
         conversation_history=None, is_first_turn=True,
     )
     assert out is not None  # ambient still works
-    assert judge_calls["n"] == 0
-    assert reformulate_calls["n"] == 0
     assert merged_calls["n"] == 0

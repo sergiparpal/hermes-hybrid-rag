@@ -78,6 +78,13 @@ def _dense_topk(engine, query: str, qvec: np.ndarray | None, k: int) -> list[int
     if engine.embeddings is None or engine.embeddings.shape[0] == 0:
         return []
     if qvec is None:
+        # Defensive: an empty/whitespace query encodes to an arbitrary
+        # vector whose top matches would be noise. Production callers
+        # (tool layer, ambient hook) already reject these upstream, but
+        # the engine method is also reachable directly from tests and
+        # third-party code.
+        if not query or not query.strip():
+            return []
         batch = engine.embedder.encode([query])  # (1, dim), L2-normalized
         if batch.shape[0] == 0:
             return []

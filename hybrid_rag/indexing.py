@@ -28,11 +28,16 @@ from .storage import Store
 log = logging.getLogger(__name__)
 
 
-# The supported set is derived from the default extractor registry so a new
-# extractor implementer doesn't have to edit two places. Third-party code that
-# wants to add an extractor mutates ``extractors.DEFAULT_REGISTRY`` (or wires
-# its own and passes it to a future API).
+# Backwards-compatible export. Prefer calling ``_supported_suffixes()`` from
+# inside this module — the property on the registry is re-evaluated on every
+# read so third-party extractors registered at runtime become visible to
+# ``_accept_file`` immediately. A module-level snapshot froze the set at
+# import time and quietly skipped late-registered suffixes during the walk.
 SUPPORTED_SUFFIXES = DEFAULT_REGISTRY.supported_suffixes
+
+
+def _supported_suffixes() -> frozenset[str]:
+    return DEFAULT_REGISTRY.supported_suffixes
 
 
 def _hash_file(path: Path, chunk_size: int = 65536) -> str:
@@ -66,7 +71,7 @@ def _accept_file(p: Path, *, allow_symlink: bool = False) -> bool:
         return False
     if not _stat.S_ISREG(st.st_mode):
         return False
-    if p.suffix.lower() not in SUPPORTED_SUFFIXES:
+    if p.suffix.lower() not in _supported_suffixes():
         return False
     if st.st_size > MAX_INDEX_FILE_BYTES:
         log.warning(
@@ -343,30 +348,36 @@ def rebuild_artifacts(store: Store, embedder) -> None:
     SQLite chunk order. Also rewrites each chunk's ``embed_row`` so row N
     of the embeddings array maps to chunk_ids[N]. Persisting the BM25
     state at index time means engine load is a JSON decode (~100 ms on
-    100K chunks) instead of a re-tokenize + re-build (1-3 s)."""
+    100K chunks) instead of a re-tokenize + re-build (1-3 s).
+
+    Always bumps ``index_version`` — including the empty-corpus path —
+    so a live engine that previously loaded a non-empty index notices
+    the corpus is now empty and reloads, instead of serving cached
+    results against deleted chunks.
+    """
     rows = list(store.iter_chunks_ordered())
     artifacts = ArtifactStore(store.data_dir)
     artifacts.unlink_legacy_bm25()
 
     if not rows:
         artifacts.delete()
-        return
+    else:
+        embed_texts = [r.effective_embedding_text for r in rows]
+        bm25_texts = [r.effective_bm25_text for r in rows]
+        chunk_ids = [r.id for r in rows]
 
-    embed_texts = [r.effective_embedding_text for r in rows]
-    bm25_texts = [r.effective_bm25_text for r in rows]
-    chunk_ids = [r.id for r in rows]
+        embeddings = embedder.encode(embed_texts)
+        if embeddings.shape[0] != len(embed_texts):
+            raise RuntimeError("embedder returned wrong number of vectors")
 
-    embeddings = embedder.encode(embed_texts)
-    if embeddings.shape[0] != len(embed_texts):
-        raise RuntimeError("embedder returned wrong number of vectors")
+        artifacts.save(embeddings)
+        artifacts.save_bm25_state(_build_bm25_state(bm25_texts))
+        store.bulk_update_embed_rows([(cid, row) for row, cid in enumerate(chunk_ids)])
 
-    artifacts.save(embeddings)
-    artifacts.save_bm25_state(_build_bm25_state(bm25_texts))
-    store.bulk_update_embed_rows([(cid, row) for row, cid in enumerate(chunk_ids)])
+        model_name = getattr(embedder, "model_name", None) or "unknown"
+        store.set_meta("embed_model", str(model_name))
+        store.set_meta("embed_dim", str(int(embeddings.shape[1])))
 
-    model_name = getattr(embedder, "model_name", None) or "unknown"
-    store.set_meta("embed_model", str(model_name))
-    store.set_meta("embed_dim", str(int(embeddings.shape[1])))
     # Bump the version counter so any RAGEngine pointed at this data dir
     # reloads on its next call. Replaces the old explicit engine.reset()
     # call from index_path — see engine._ensure_loaded for the consumer.

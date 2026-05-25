@@ -11,6 +11,7 @@ import functools
 import json
 from typing import Callable
 
+from .config import RAG_SEARCH_PARENT_POOL
 from .engine import get_engine
 from .formatting import sanitize_document_text
 from .pipelines import ExplicitPipeline
@@ -77,7 +78,15 @@ def tool_rag_search(args: dict, store=None, engine=None) -> str:
     q = args.get("query")
     if not q or not isinstance(q, str) or not q.strip():
         return _err(ValueError("query is required and must be a non-empty string"))
-    k = int(args.get("k", 5))
+    try:
+        k = int(args.get("k", 5))
+    except (TypeError, ValueError):
+        return _err(ValueError(f"k must be an integer, got {args.get('k')!r}"))
+    # Clamp to [1, RAG_SEARCH_PARENT_POOL]. Negative k would slice as
+    # ``[:negative]`` deep in the rerank stage and silently return
+    # "all-except-last-N"; the upstream pool is already capped at
+    # RAG_SEARCH_PARENT_POOL so larger k can never return more anyway.
+    k = max(1, min(k, RAG_SEARCH_PARENT_POOL))
 
     eng = engine if engine is not None else get_engine()
     result = ExplicitPipeline(eng).run(q, k)

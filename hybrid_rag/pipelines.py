@@ -90,8 +90,13 @@ class ExplicitPipeline:
             )
 
         retry = self._one_pass(new_q, k)
+        # If the rewrite returned nothing, prefer the first-pass parents over
+        # silently handing the caller an empty result. The judge declared
+        # them insufficient, but "imperfect" still beats "empty" — and the
+        # caller can still see the verdict via ``crag_reason``.
+        kept_parents = retry.parents if retry.parents else first.parents
         return ExplicitResult(
-            parents=retry.parents,
+            parents=kept_parents,
             expansions_used=retry.expansions_used,
             crag_reformulated_query=new_q,
             crag_reason=reason,

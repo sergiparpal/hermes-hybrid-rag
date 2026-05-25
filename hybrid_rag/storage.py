@@ -16,6 +16,7 @@ modules for the split rationale.
 from __future__ import annotations
 
 import sqlite3
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, Iterator, Sequence
@@ -33,12 +34,16 @@ _SQLITE_IN_BATCH = 500
 # must use this exact clause.
 _CANONICAL_CHUNK_ORDER = "ORDER BY parent_id, ord"
 
-# Column list shared by `get_parent` and `get_parents` — both join `files` to
-# surface the source path and filetype on every parent row.
-_PARENT_WITH_FILE_COLS = (
-    "p.id, p.file_id, p.ord, p.kind, p.title, p.page_no, p.text, p.char_len, "
-    "f.path AS source_path, f.filetype"
+# Column list shared by `get_parent` and `get_parents` — both join `files`
+# to surface the source path and filetype on every parent row. ``{text}`` is
+# a format placeholder so callers can swap a SUBSTR projection in without
+# string-replacing on column names (which silently breaks the moment a
+# future column happens to share a substring with "p.text").
+_PARENT_WITH_FILE_COLS_TEMPLATE = (
+    "p.id, p.file_id, p.ord, p.kind, p.title, p.page_no, {text} AS text, "
+    "p.char_len, f.path AS source_path, f.filetype"
 )
+_PARENT_WITH_FILE_COLS = _PARENT_WITH_FILE_COLS_TEMPLATE.format(text="p.text")
 
 SCHEMA_DDL = """
 PRAGMA foreign_keys = ON;
@@ -92,6 +97,11 @@ class Store:
         self.data_dir = Path(data_dir) if data_dir is not None else get_data_dir()
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self._conn: sqlite3.Connection | None = None
+        # Serializes the lazy ``connect()`` so concurrent first-callers (the
+        # warm-up thread racing a tool call) don't each open a connection and
+        # then orphan one. Only protects construction — once ``_conn`` is set,
+        # the fast path skips the lock.
+        self._conn_lock = threading.Lock()
         # Incremented on every meta write. Read by engines whose TTL-cached
         # `index_version` should invalidate immediately on same-process
         # reindex (test and dev), without paying the SQL read for that
@@ -104,40 +114,53 @@ class Store:
         return db_path(self.data_dir)
 
     def connect(self) -> sqlite3.Connection:
+        # Double-checked locking. Fast path: connection already open, no lock.
+        # Slow path: acquire the lock so only one thread opens; others wait
+        # then re-check. Without this two racing first-callers would each
+        # open a sqlite3 connection and one would be orphaned with the PRAGMAs
+        # half-applied.
         if self._conn is not None:
             return self._conn
-        # `check_same_thread=False`: the engine singleton's connection is
-        # opened by whichever thread first calls into the store — typically
-        # the `on_session_start` warm thread — and then reused from the
-        # main thread on every tool call and pre_llm_call hook. SQLite
-        # itself is thread-safe; Python's default thread-affinity check
-        # would otherwise raise ProgrammingError on every cross-thread use.
-        # Writes in this codebase are confined to the indexing path (a
-        # separate CLI process), so we don't need additional locking here.
-        conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
-        conn.row_factory = sqlite3.Row
-        # PRAGMAs: WAL lets the indexing CLI write while the Hermes process
-        # reads concurrently (default DELETE mode would block readers for
-        # seconds). `synchronous=NORMAL` skips the per-commit fsync — the
-        # catalog is rebuildable from source documents, so a power-loss
-        # rollback is acceptable. mmap + larger page cache make the
-        # parent/chunk fetches on the hot path effectively zero-syscall.
-        conn.executescript(
-            "PRAGMA foreign_keys = ON;\n"
-            "PRAGMA journal_mode = WAL;\n"
-            "PRAGMA synchronous = NORMAL;\n"
-            "PRAGMA temp_store = MEMORY;\n"
-            "PRAGMA mmap_size = 268435456;\n"   # 256 MiB
-            "PRAGMA cache_size = -65536;\n"     # 64 MiB (negative = KiB)
-        )
-        self.init_schema(conn)
-        self._conn = conn
-        return conn
+        with self._conn_lock:
+            if self._conn is not None:
+                return self._conn
+            # `check_same_thread=False`: the engine singleton's connection is
+            # opened by whichever thread first calls into the store —
+            # typically the `on_session_start` warm thread — and then reused
+            # from the main thread on every tool call and pre_llm_call hook.
+            # SQLite itself is thread-safe; Python's default thread-affinity
+            # check would otherwise raise ProgrammingError on every
+            # cross-thread use. Writes in this codebase are confined to the
+            # indexing path (a separate CLI process), so we don't need
+            # additional locking around statements.
+            conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+            conn.row_factory = sqlite3.Row
+            # PRAGMAs: WAL lets the indexing CLI write while the Hermes
+            # process reads concurrently (default DELETE mode would block
+            # readers for seconds). `synchronous=NORMAL` skips the per-commit
+            # fsync — the catalog is rebuildable from source documents, so a
+            # power-loss rollback is acceptable. mmap + larger page cache
+            # make the parent/chunk fetches on the hot path effectively
+            # zero-syscall.
+            conn.executescript(
+                "PRAGMA foreign_keys = ON;\n"
+                "PRAGMA journal_mode = WAL;\n"
+                "PRAGMA synchronous = NORMAL;\n"
+                "PRAGMA temp_store = MEMORY;\n"
+                "PRAGMA mmap_size = 268435456;\n"   # 256 MiB
+                "PRAGMA cache_size = -65536;\n"     # 64 MiB (negative = KiB)
+            )
+            self.init_schema(conn)
+            # Publish last so a partially-initialized connection (PRAGMAs
+            # half-applied) is never visible to other threads.
+            self._conn = conn
+            return self._conn
 
     def close(self) -> None:
-        if self._conn is not None:
-            self._conn.close()
-            self._conn = None
+        with self._conn_lock:
+            if self._conn is not None:
+                self._conn.close()
+                self._conn = None
 
     @contextmanager
     def transaction(self):
@@ -232,8 +255,10 @@ class Store:
         if not file_ids:
             return
         with self._maybe_transaction(conn) as c:
-            qmarks = ",".join("?" * len(file_ids))
-            c.execute(f"DELETE FROM files WHERE id IN ({qmarks})", file_ids)
+            for start in range(0, len(file_ids), _SQLITE_IN_BATCH):
+                batch = file_ids[start:start + _SQLITE_IN_BATCH]
+                qmarks = ",".join("?" * len(batch))
+                c.execute(f"DELETE FROM files WHERE id IN ({qmarks})", batch)
 
     # --- bulk inserts ---
 
@@ -416,7 +441,7 @@ class Store:
             text_expr = "p.text"
         else:
             text_expr = "SUBSTR(p.text, 1, ?)"
-        cols = _PARENT_WITH_FILE_COLS.replace("p.text", f"{text_expr} AS text")
+        cols = _PARENT_WITH_FILE_COLS_TEMPLATE.format(text=text_expr)
         out: dict = {}
         for start in range(0, len(ids), _SQLITE_IN_BATCH):
             batch = ids[start:start + _SQLITE_IN_BATCH]

@@ -60,8 +60,11 @@ def test_falls_back_on_unparseable_json(mock_anthropic):
 
 
 def test_empty_query_returns_empty_list():
+    # Both empty and whitespace-only collapse to "no expansion" — a
+    # whitespace string would otherwise feed noise into a hybrid_search
+    # variant if a future caller skipped the tool layer's validation.
     assert expand_query("") == []
-    assert expand_query("   ") == ["   "]
+    assert expand_query("   ") == []
 
 
 def test_paraphrases_dedupe_against_query_and_each_other(mock_anthropic):

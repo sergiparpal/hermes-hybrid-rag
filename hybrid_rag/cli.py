@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 from . import indexing
+from .artifacts import bm25_state_path
 from .config import bm25_path, db_path, get_data_dir, npz_path, toggles_path
 from .storage import Store
 
@@ -28,6 +29,7 @@ def _owned_artifacts(data_dir: Path) -> list[Path]:
     return [
         db_path(data_dir),
         npz_path(data_dir),
+        bm25_state_path(data_dir),
         bm25_path(data_dir),  # legacy file from the old pickle path
         toggles_path(data_dir),
     ]
@@ -79,6 +81,11 @@ def handle_rag(args: argparse.Namespace, *, _indexer=indexing,
                 except OSError as e:
                     log.warning("failed to unlink %s: %s", p, e)
             print(f"removed {len(present)} file(s) from {data_dir}")
+            # Note for ops: a running Hermes process keeps the SQLite file
+            # open. POSIX preserves the inode for the open fd, so that
+            # process keeps reading the *deleted* database (and never
+            # notices the clear) until it restarts. Restart Hermes after
+            # `hermes rag clear` if you want the change visible immediately.
             return 0
         print(f"unknown rag subcommand: {cmd!r}", file=sys.stderr)
         return 2

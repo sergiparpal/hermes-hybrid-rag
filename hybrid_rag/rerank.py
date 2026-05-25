@@ -117,8 +117,12 @@ def rerank(
     rerank passes (A/B model comparison) can pass the same list twice
     without stale scores leaking across calls.
 
-    ``text_cap`` only affects the local cross-encoder fallback; Cohere
-    sees full text because it does its own internal chunking server-side.
+    ``text_cap`` is applied only by the local cross-encoder fallback —
+    Cohere is handed each parent's ``text`` as-is. Upstream
+    (``chunks_to_parents``) already pre-truncates pool text to
+    ``DEFAULT_RERANK_TEXT_CHARS`` to bound the rerank-stage I/O, so in
+    practice Cohere also sees capped text; if you ever want Cohere to
+    score full bodies, lift the pre-truncation upstream first.
     """
     if not parents:
         return []
